@@ -15,11 +15,6 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        buildConfigField("String", "USERBACK_TOKEN", "\"P-munRw6sN7ExmKIuAwNvumliFy\"")
-        buildConfigField("String", "USERBACK_API_URL", "\"https://api.userback.ngrok.app/\"")
-        buildConfigField("String", "USERBACK_EVENTS_URL", "\"https://events.userback.ngrok.app\"")
-        buildConfigField("String", "USERBACK_BASE_URL", "\"https://app.userback.ngrok.app\"")
     }
 
     buildFeatures {
@@ -27,12 +22,23 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "USERBACK_TOKEN", "\"P-munRw6sN7ExmKIuAwNvumliFy\"")
+            buildConfigField("String", "USERBACK_API_URL", "\"https://api.userback.ngrok.app/\"")
+            buildConfigField("String", "USERBACK_EVENTS_URL", "\"https://events.userback.ngrok.app\"")
+            buildConfigField("String", "USERBACK_BASE_URL", "\"https://app.userback.ngrok.app\"")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Replace these with your actual production URLs
+            buildConfigField("String", "USERBACK_TOKEN", "\"YOUR_PRODUCTION_TOKEN\"")
+            buildConfigField("String", "USERBACK_API_URL", "\"https://api.userback.io/\"")
+            buildConfigField("String", "USERBACK_EVENTS_URL", "\"https://events.userback.io\"")
+            buildConfigField("String", "USERBACK_BASE_URL", "\"https://static.userback.io\"")
         }
     }
     compileOptions {
