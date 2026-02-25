@@ -26,9 +26,22 @@ object Userback {
 
     private var isRecording: Boolean = false
     private val pendingEvents = Collections.synchronizedList(mutableListOf<JSONObject>())
-
-    // Keep track of active WebViews to send events to them
     private val webViews = Collections.newSetFromMap(WeakHashMap<WebView, Boolean>())
+
+    private const val INITIAL_HTML = """
+            <html>
+              <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>
+                  body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; background-color: #F0F0F0; }
+                  h1 { text-align: center; color: #333; }
+                </style>
+              </head>
+              <body>
+                <h1>Userback SDK Initialized</h1>
+              </body>
+            </html>
+    """
 
     @JvmStatic
     val instance = this
@@ -49,10 +62,7 @@ object Userback {
         this.requestURL = requestURL
         this.trackURL = trackURL
         this.scriptURL = scriptURL ?: DEFAULT_JS
-
-        // Start recording events
         this.isRecording = true
-
         Log.d("Userback", "Configured and event recording started.")
     }
 
@@ -86,32 +96,22 @@ object Userback {
 
     fun close() {
         Log.d("Userback", "Widget requested to close")
-        webViews.forEach { webView ->
-            webView.post {
-                webView.visibility = View.GONE
-            }
-        }
+        // We no longer hide the WebView or reload HTML here
+        // This keeps the "Initialized" text visible in the background
     }
 
     fun sendNativeEvent(event: JSONObject) {
         if (!isRecording) return
-
         if (webViews.isEmpty()) {
             synchronized(pendingEvents) {
                 pendingEvents.add(event)
-                // Keep buffer reasonable
-                if (pendingEvents.size > 500) {
-                    pendingEvents.removeAt(0)
-                }
+                if (pendingEvents.size > 500) pendingEvents.removeAt(0)
             }
             return
         }
-
         val js = "window.Userback && Userback.addNativeEvent($event)"
         webViews.forEach { webView ->
-            webView.post {
-                webView.evaluateJavascript(js, null)
-            }
+            webView.post { webView.evaluateJavascript(js, null) }
         }
     }
 
@@ -127,9 +127,6 @@ object Userback {
         }
     }
 
-    /**
-     * JavaScript Bridge to handle messages from the JS SDK
-     */
     private class UserbackJsBridge {
         @JavascriptInterface
         fun postMessage(payload: String) {
@@ -137,19 +134,16 @@ object Userback {
                 val json = JSONObject(payload)
                 val type = json.optString("type")
                 val event = json.optString("event")
-
                 if (type.equals("close", ignoreCase = true) || event.equals("close", ignoreCase = true)) {
                     Userback.close()
                     return
                 }
             } catch (e: Exception) {
-                // If it's not a JSON string, check if the payload itself is "close"
                 if (payload.equals("close", ignoreCase = true)) {
                     Userback.close()
                     return
                 }
             }
-
             Log.d("Userback", "Ignoring unsupported script message body: $payload")
         }
     }
@@ -157,83 +151,49 @@ object Userback {
     fun makeWebView(context: Context): WebView {
         val webView = WebView(context)
         webViews.add(webView)
-
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
             databaseEnabled = true
             loadsImagesAutomatically = true
             mediaPlaybackRequiresUserGesture = false
-            cacheMode = WebSettings.LOAD_DEFAULT
+            cacheMode = WebSettings.LOAD_NO_CACHE
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             allowFileAccess = true
             allowContentAccess = true
         }
-
-        // Add the bridge to the WebView as "userbackSDK"
         webView.addJavascriptInterface(UserbackJsBridge(), "userbackSDK")
-
         WebView.setWebContentsDebuggingEnabled(true)
         webView.webChromeClient = WebChromeClient()
-
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
+                // Always inject JS SDK so it's ready to be opened over the placeholder text
                 val js = buildInjectedJS()
-                Log.d("Userback", "Injecting initialization JS")
                 view.evaluateJavascript(js, null)
-
-                // Flush events that were captured before the WebView was ready
                 flushPendingEvents(view)
             }
-
             override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
-                if (scriptURL?.contains(".net") == true) {
-                   handler?.proceed()
+                if (scriptURL?.contains(".net") == true || scriptURL?.contains("ngrok") == true) {
+                    handler?.proceed()
                 } else {
-                   super.onReceivedSslError(view, handler, error)
+                    super.onReceivedSslError(view, handler, error)
                 }
             }
         }
-
-        webView.loadDataWithBaseURL(
-            "https://static.userback.io",
-            """
-            <html>
-              <head>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <style>
-                  body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; }
-                  h1 { text-align: center; }
-                </style>
-              </head>
-              <body>
-                <h1>Userback SDK Initialized</h1>
-              </body>
-            </html>
-            """.trimIndent(),
-            "text/html",
-            "utf-8",
-            null
-        )
-
+        webView.loadDataWithBaseURL("https://static.userback.io", INITIAL_HTML.trimIndent(), "text/html", "utf-8", null)
         return webView
     }
 
     fun createWebView(context: Context) = makeWebView(context)
 
     private fun buildInjectedJS(): String {
-        fun jsonString(value: Any?): String {
-            return when (value) {
-                null -> "null"
-                is String -> "\"$value\""
-                is JSONObject -> value.toString()
-                else -> JSONObject.wrap(value).toString()
-            }
+        fun jsonString(value: Any?): String = when (value) {
+            null -> "null"
+            is String -> "\"$value\""
+            is JSONObject -> value.toString()
+            else -> JSONObject.wrap(value).toString()
         }
-
-        val finalJS = scriptURL ?: DEFAULT_JS
-
         return """
             window.Userback = window.Userback || {};
             Userback.access_token = ${jsonString(accessToken)};
@@ -245,7 +205,7 @@ object Userback {
             (function(d){
                 var s = d.createElement('script');
                 s.async = true;
-                s.src = '$finalJS';
+                s.src = '${scriptURL ?: DEFAULT_JS}';
                 (d.head || d.body).appendChild(s);
             })(document);
         """.trimIndent()
