@@ -20,7 +20,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var contentFrame: FrameLayout
     private lateinit var webView: WebView
     private lateinit var testCenterView: LinearLayout
-    private lateinit var settingsView: LinearLayout
 
     // Create OkHttpClient with Userback Interceptor
     private val client = OkHttpClient.Builder()
@@ -33,7 +32,7 @@ class MainActivity : AppCompatActivity() {
         // 1. Run Userback init when app load
         Userback.init(
             context = this,
-            accessToken = "P-munRw6sN7ExmKIuAwNvumliFy",
+            accessToken = BuildConfig.USERBACK_TOKEN,
             userData = mapOf(
                 "id" to "123456",
                 "info" to mapOf(
@@ -41,11 +40,11 @@ class MainActivity : AppCompatActivity() {
                     "email" to "someone@example.com"
                 )
             ),
-            widgetCSS = "https://app-vm.app.dev.userback.net/dist/widget_dev/widget.min.css",
-            surveyURL = "https://app-vm.app.dev.userback.net/s",
-            requestURL = "https://api-vm.dev.userback.net/",
-            trackURL = "https://events-vm.dev.userback.net",
-            scriptURL = "https://app-vm.app.dev.userback.net/dist/widget_dev/widget.min.js?123"
+            widgetCSS = "${BuildConfig.USERBACK_BASE_URL}/dist/widget_dev/widget.min.css",
+            surveyURL = "${BuildConfig.USERBACK_BASE_URL}/s",
+            requestURL = BuildConfig.USERBACK_API_URL,
+            trackURL = BuildConfig.USERBACK_EVENTS_URL,
+            scriptURL = "${BuildConfig.USERBACK_BASE_URL}/dist/widget_dev/widget.min.js"
         )
 
         // 2. Create UI with Content Frame and bottom menus
@@ -144,21 +143,6 @@ class MainActivity : AppCompatActivity() {
         }
         contentFrame.addView(testCenterView)
 
-        // --- Screen 3: Settings ---
-        settingsView = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            visibility = View.GONE
-            setBackgroundColor(Color.parseColor("#FFF3E0")) // Light Orange background
-            addView(TextView(this@MainActivity).apply {
-                text = "Settings Screen"
-                textSize = 24f
-                gravity = Gravity.CENTER
-                setTextColor(Color.BLACK)
-            })
-        }
-        contentFrame.addView(settingsView)
-
         // Bottom Menu (Centered at the bottom)
         val bottomMenuContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -189,14 +173,6 @@ class MainActivity : AppCompatActivity() {
         }
         bottomMenuContainer.addView(testButton)
 
-        val settingsButton = Button(this).apply {
-            text = "Settings"
-            setOnClickListener {
-                showScreen(settingsView)
-            }
-        }
-        bottomMenuContainer.addView(settingsButton)
-
         val openUserbackButton = Button(this).apply {
             text = "Open Userback"
             setOnClickListener {
@@ -213,7 +189,6 @@ class MainActivity : AppCompatActivity() {
     private fun showScreen(screen: View) {
         webView.visibility = View.GONE
         testCenterView.visibility = View.GONE
-        settingsView.visibility = View.GONE
 
         screen.visibility = View.VISIBLE
     }
