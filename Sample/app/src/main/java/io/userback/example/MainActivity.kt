@@ -20,6 +20,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var contentFrame: FrameLayout
     private lateinit var webView: WebView
     private lateinit var testCenterView: LinearLayout
+    private lateinit var sdkFunctionsView: ScrollView
 
     // Create OkHttpClient with Userback Interceptor
     private val client = OkHttpClient.Builder()
@@ -143,6 +144,70 @@ class MainActivity : AppCompatActivity() {
         }
         contentFrame.addView(testCenterView)
 
+        // --- Screen 3: SDK Functions ---
+        sdkFunctionsView = ScrollView(this).apply {
+            visibility = View.GONE
+            setBackgroundColor(Color.parseColor("#F5F5F5"))
+            val container = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(32, 32, 32, 32)
+            }
+
+            container.addView(TextView(this@MainActivity).apply {
+                text = "SDK Functions"
+                textSize = 20f
+                setPadding(0, 0, 0, 32)
+            })
+
+            fun addFuncButton(label: String, action: () -> Unit) {
+                container.addView(Button(this@MainActivity).apply {
+                    text = label
+                    setOnClickListener { action() }
+                })
+            }
+
+            addFuncButton("Identify User") {
+                Userback.identify("user_12345", mapOf("name" to "John Doe", "plan" to "Premium"))
+                Toast.makeText(this@MainActivity, "User Identified", Toast.LENGTH_SHORT).show()
+            }
+
+            addFuncButton("Clear Identity") {
+                Userback.clearIdentity()
+                Toast.makeText(this@MainActivity, "Identity Cleared", Toast.LENGTH_SHORT).show()
+            }
+
+            addFuncButton("Set Email: test@example.com") {
+                Userback.setEmail("test@example.com")
+            }
+
+            addFuncButton("Set Name: Test User") {
+                Userback.setName("Test User")
+            }
+
+            addFuncButton("Set Data (custom: value)") {
+                Userback.setData(mapOf("custom" to "value", "env" to "test"))
+            }
+
+            addFuncButton("Add Custom Event") {
+                Userback.addCustomEvent("Button Clicked", mapOf("button_id" to "sdk_func_test"))
+            }
+
+            addFuncButton("Open Portal") {
+                Userback.openPortal()
+            }
+
+            addFuncButton("Open Roadmap") {
+                Userback.openRoadmap()
+            }
+
+            addFuncButton("Refresh Widget") {
+                Userback.refresh()
+            }
+
+            addView(container)
+        }
+        contentFrame.addView(sdkFunctionsView)
+
         // Bottom Menu (Centered at the bottom)
         val bottomMenuContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -173,11 +238,19 @@ class MainActivity : AppCompatActivity() {
         }
         bottomMenuContainer.addView(testButton)
 
+        val sdkFuncButton = Button(this).apply {
+            text = "SDK"
+            setOnClickListener {
+                showScreen(sdkFunctionsView)
+            }
+        }
+        bottomMenuContainer.addView(sdkFuncButton)
+
         val openUserbackButton = Button(this).apply {
-            text = "Open Userback"
+            text = "Open"
             setOnClickListener {
                 showScreen(webView)
-                Userback.open(webView, "general")
+                Userback.openForm()
             }
         }
         bottomMenuContainer.addView(openUserbackButton)
@@ -189,6 +262,7 @@ class MainActivity : AppCompatActivity() {
     private fun showScreen(screen: View) {
         webView.visibility = View.GONE
         testCenterView.visibility = View.GONE
+        sdkFunctionsView.visibility = View.GONE
 
         screen.visibility = View.VISIBLE
     }
