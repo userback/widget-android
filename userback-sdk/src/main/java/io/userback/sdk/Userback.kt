@@ -1,6 +1,7 @@
 package io.userback.sdk
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import android.view.View
 import android.webkit.WebChromeClient
@@ -10,11 +11,13 @@ import android.webkit.WebViewClient
 import android.webkit.SslErrorHandler
 import android.net.http.SslError
 import android.webkit.JavascriptInterface
+import androidx.core.net.toUri
 import org.json.JSONObject
 import java.util.Collections
 import java.util.WeakHashMap
 
 object Userback {
+    private var appContext: Context? = null
     private var accessToken: String? = null
     private var userData: JSONObject? = null
     private var widgetCSS: String? = null
@@ -27,6 +30,8 @@ object Userback {
     private var isRecording: Boolean = false
     private val pendingEvents = Collections.synchronizedList(mutableListOf<JSONObject>())
     private val webViews = Collections.newSetFromMap(WeakHashMap<WebView, Boolean>())
+
+    private var latestWidgetConfig: JSONObject? = null
 
     private const val INITIAL_HTML = """
             <html>
@@ -42,9 +47,6 @@ object Userback {
               </body>
             </html>
     """
-
-    @JvmStatic
-    val instance = this
 
     fun configure(
         accessToken: String,
@@ -75,29 +77,203 @@ object Userback {
         requestURL: String? = null,
         trackURL: String? = null,
         scriptURL: String? = null
-    ) = configure(accessToken, userData, widgetCSS, surveyURL, requestURL, trackURL, scriptURL)
+    ) {
+        this.appContext = context.applicationContext
+        configure(accessToken, userData, widgetCSS, surveyURL, requestURL, trackURL, scriptURL)
+    }
 
     fun getInterceptor(): NetworkInterceptor {
         return NetworkInterceptor()
     }
 
-    fun open(webView: WebView, destination: String? = null) {
+    // --- SDK methods to match JS/iOS functionality ---
+
+    fun widgetConfig(): JSONObject? = latestWidgetConfig
+
+    fun portalTarget(): String? = latestWidgetConfig?.optString("portal_target")?.ifEmpty { null }
+
+    fun roadmapTarget(): String? = latestWidgetConfig?.optString("roadmap_target")?.ifEmpty { null }
+
+    fun portalURL(): String? = latestWidgetConfig?.optString("portal_url")?.ifEmpty { null }
+
+    fun startNativeRecording() {
+        Log.d("Userback", "Native recording hook called. Plug in your native recorder integration here.")
+    }
+
+    fun isLoaded(callback: (Boolean) -> Unit) {
+        val webView = webViews.firstOrNull() ?: return callback(false)
         webView.post {
-            webView.visibility = View.VISIBLE
+            webView.evaluateJavascript("window.Userback && typeof window.Userback.isLoaded === 'function' ? !!window.Userback.isLoaded() : false") { result ->
+                callback(result?.toBoolean() ?: false)
+            }
         }
-        val js = if (destination != null) {
-            "Userback.open('$destination')"
-        } else {
-            "Userback.open()"
+    }
+
+    fun initWidget(options: Map<String, Any> = emptyMap()) {
+        val token = accessToken ?: return
+        callUserback("init", token, JSONObject(options))
+    }
+
+    fun startWidget() {
+        callUserback("start")
+    }
+
+    fun refresh(refreshFeedback: Boolean = true, refreshSurvey: Boolean = true) {
+        callUserback("refresh", refreshFeedback, refreshSurvey)
+    }
+
+    fun destroy(keepInstance: Boolean = false, keepRecorder: Boolean = false) {
+        callUserback("destroy", keepInstance, keepRecorder)
+    }
+
+    fun openForm(mode: String = "general", directTo: String? = null) {
+        webViews.forEach { it.post { it.visibility = View.VISIBLE } }
+        callUserback("openForm", mode, directTo)
+    }
+
+    fun openPortal() {
+        val target = portalTarget()?.lowercase()
+        val url = portalURL()
+        Log.d("Userback", "openPortal triggered. Current config target: $target, URL: $url")
+
+        when (target) {
+            "widget" -> {
+                Log.d("Userback", "Target is 'widget', calling JS openPortal('portal')")
+                callUserback("openPortal", "portal")
+            }
+            "redirect", "window" -> {
+                if (!url.isNullOrEmpty()) {
+                    Log.d("Userback", "Target is $target, opening external browser: $url")
+                    openURL(url)
+                } else {
+                    Log.w("Userback", "Target is $target but portalURL is missing. Falling back to JS.")
+                    callUserback("openPortal")
+                }
+            }
+            else -> {
+                Log.d("Userback", "Target is unknown ($target), falling back to JS openPortal()")
+                callUserback("openPortal")
+            }
         }
-        Log.d("Userback", "Executing JS: $js")
-        webView.evaluateJavascript(js, null)
+    }
+
+    fun openRoadmap() {
+        val target = roadmapTarget()?.lowercase()
+        val url = portalURL()
+        Log.d("Userback", "openRoadmap triggered. Target: $target")
+
+        when (target) {
+            "widget" -> callUserback("openPortal", "roadmap")
+            "redirect", "window" -> {
+                if (!url.isNullOrEmpty()) {
+                    openURL(url)
+                } else {
+                    callUserback("openRoadmap")
+                }
+            }
+            else -> callUserback("openRoadmap")
+        }
+    }
+
+    fun openAnnouncement() {
+        val target = latestWidgetConfig?.optString("announcement_target")?.lowercase()?.ifEmpty { null }
+        val url = portalURL()
+        Log.d("Userback", "openAnnouncement triggered. Target: $target")
+
+        when (target) {
+            "widget" -> callUserback("openPortal", "announcement")
+            "redirect", "window" -> {
+                if (!url.isNullOrEmpty()) {
+                    openURL(url)
+                } else {
+                    callUserback("openAnnouncement")
+                }
+            }
+            else -> callUserback("openAnnouncement")
+        }
+    }
+
+    private fun openURL(url: String) {
+        Log.d("Userback", "openURL called with: $url")
+        val context = appContext
+        if (context == null) {
+            Log.e("Userback", "CRITICAL: appContext is null. Userback.init(context, ...) must be called before opening URLs.")
+            return
+        }
+
+        try {
+            val uri = url.toUri()
+            if (uri.scheme == null) {
+                Log.e("Userback", "ABORT: Invalid URL scheme for '$url'. Must start with http:// or https://")
+                return
+            }
+
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            Log.d("Userback", "BROWSER START: Intent successfully sent for $url")
+        } catch (e: Exception) {
+            Log.e("Userback", "ERROR: Could not start browser activity for $url", e)
+        }
+    }
+
+    fun setEmail(email: String) {
+        callUserback("setEmail", email)
+    }
+
+    fun setName(name: String) {
+        callUserback("setName", name)
+    }
+
+    fun setCategories(categories: String) {
+        callUserback("setCategories", categories)
+    }
+
+    fun setPriority(priority: String) {
+        callUserback("setPriority", priority)
+    }
+
+    fun setTheme(theme: String) {
+        callUserback("setTheme", theme)
+    }
+
+    fun startSessionReplay(options: Map<String, Any> = emptyMap()) {
+        callUserback("startSessionReplay", JSONObject(options))
+    }
+
+    fun stopSessionReplay() {
+        callUserback("stopSessionReplay")
+    }
+
+    fun addCustomEvent(title: String, details: Map<String, Any>? = null) {
+        callUserback("addCustomEvent", title, details?.let { JSONObject(it) })
+    }
+
+    fun identify(userID: Any, userInfo: Map<String, Any>? = null) {
+        callUserback("identify", userID, userInfo?.let { JSONObject(it) })
+    }
+
+    fun clearIdentity() {
+        callUserback("identify", -1)
+    }
+
+    fun setData(data: Map<String, Any>) {
+        callUserback("setData", JSONObject(data))
+    }
+
+    fun addHeader(key: String, value: String) {
+        callUserback("addHeader", key, value)
     }
 
     fun close() {
         Log.d("Userback", "Widget requested to close")
-        // We no longer hide the WebView or reload HTML here
-        // This keeps the "Initialized" text visible in the background
+        callUserback("close")
+        webViews.forEach { webView ->
+            webView.post {
+                webView.visibility = View.GONE
+            }
+        }
     }
 
     fun sendNativeEvent(event: JSONObject) {
@@ -110,6 +286,20 @@ object Userback {
             return
         }
         val js = "window.Userback && Userback.addNativeEvent($event)"
+        webViews.forEach { webView ->
+            webView.post { webView.evaluateJavascript(js, null) }
+        }
+    }
+
+    private fun callUserback(function: String, vararg arguments: Any?) {
+        val argsString = arguments.joinToString(", ") { arg ->
+            when (arg) {
+                null -> "null"
+                is String -> "\"$arg\""
+                else -> arg.toString()
+            }
+        }
+        val js = "window.Userback && typeof window.Userback.$function === 'function' && window.Userback.$function($argsString);"
         webViews.forEach { webView ->
             webView.post { webView.evaluateJavascript(js, null) }
         }
@@ -130,21 +320,35 @@ object Userback {
     private class UserbackJsBridge {
         @JavascriptInterface
         fun postMessage(payload: String) {
+            Log.d("Userback", "postMessage received: $payload")
             try {
                 val json = JSONObject(payload)
                 val type = json.optString("type")
-                val event = json.optString("event")
-                if (type.equals("close", ignoreCase = true) || event.equals("close", ignoreCase = true)) {
-                    Userback.close()
+                val eventName = json.optString("event")
+
+                // Handle config/load events
+                if (type == "load" || type == "config" || eventName == "load" || eventName == "config") {
+                    // Try "payload" first (matching the log provided) then fallback to "config"
+                    val config = json.optJSONObject("payload") ?: json.optJSONObject("config")
+                    if (config != null) {
+                        latestWidgetConfig = config
+                        Log.d("Userback", "latestWidgetConfig loaded successfully")
+                        return
+                    }
+                }
+
+                // Handle close events
+                if (type.equals("close", ignoreCase = true) || eventName.equals("close", ignoreCase = true)) {
+                    close()
                     return
                 }
             } catch (e: Exception) {
                 if (payload.equals("close", ignoreCase = true)) {
-                    Userback.close()
+                    close()
                     return
                 }
+                Log.e("Userback", "Error parsing postMessage payload", e)
             }
-            Log.d("Userback", "Ignoring unsupported script message body: $payload")
         }
     }
 
@@ -168,7 +372,6 @@ object Userback {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
-                // Always inject JS SDK so it's ready to be opened over the placeholder text
                 val js = buildInjectedJS()
                 view.evaluateJavascript(js, null)
                 flushPendingEvents(view)
@@ -192,10 +395,14 @@ object Userback {
             null -> "null"
             is String -> "\"$value\""
             is JSONObject -> value.toString()
-            else -> JSONObject.wrap(value).toString()
+            else -> {
+                val wrapped = JSONObject.wrap(value)
+                wrapped?.toString() ?: "null"
+            }
         }
         return """
             window.Userback = window.Userback || {};
+            Userback.load_type = "mobile_sdk";
             Userback.access_token = ${jsonString(accessToken)};
             Userback.user_data = ${jsonString(userData)};
             Userback.widget_css = ${jsonString(widgetCSS)};
