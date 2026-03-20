@@ -2,6 +2,8 @@ package io.userback.sdk
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
+import android.net.Uri
 import android.util.Log
 import android.view.View
 import android.webkit.WebChromeClient
@@ -38,12 +40,12 @@ object Userback {
               <head>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
-                  body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; background-color: #F0F0F0; }
-                  h1 { text-align: center; color: #333; }
+                  body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; background-color: #EEEEEE; }
+                  h1 { text-align: center; color: #333; opacity: 0.8; }
                 </style>
               </head>
               <body>
-                <h1>Userback SDK Initialized</h1>
+                <h1>Userback SDK Layer Active</h1>
               </body>
             </html>
     """
@@ -127,7 +129,13 @@ object Userback {
     }
 
     fun openForm(mode: String = "general", directTo: String? = null) {
-        webViews.forEach { it.post { it.visibility = View.VISIBLE } }
+        Log.d("Userback", "openForm triggered. Mode: $mode, WebViews found: ${webViews.size}")
+        webViews.forEach { webView ->
+            webView.post {
+                webView.visibility = View.VISIBLE
+                webView.bringToFront()
+            }
+        }
         callUserback("openForm", mode, directTo)
     }
 
@@ -301,7 +309,10 @@ object Userback {
         }
         val js = "window.Userback && typeof window.Userback.$function === 'function' && window.Userback.$function($argsString);"
         webViews.forEach { webView ->
-            webView.post { webView.evaluateJavascript(js, null) }
+            webView.post {
+                Log.d("Userback", "Executing JS: $js")
+                webView.evaluateJavascript(js, null)
+            }
         }
     }
 
@@ -317,37 +328,49 @@ object Userback {
         }
     }
 
+    private fun handleWidgetAction(body: JSONObject) {
+        Log.d("Userback", "handleWidgetAction: $body")
+    }
+
     private class UserbackJsBridge {
         @JavascriptInterface
         fun postMessage(payload: String) {
             Log.d("Userback", "postMessage received: $payload")
             try {
-                val json = JSONObject(payload)
-                val type = json.optString("type")
-                val eventName = json.optString("event")
+                val body = JSONObject(payload)
+                val type = body.optString("type").lowercase()
 
-                // Handle config/load events
-                if (type == "load" || type == "config" || eventName == "load" || eventName == "config") {
-                    // Try "payload" first (matching the log provided) then fallback to "config"
-                    val config = json.optJSONObject("payload") ?: json.optJSONObject("config")
-                    if (config != null) {
-                        latestWidgetConfig = config
-                        Log.d("Userback", "latestWidgetConfig loaded successfully")
-                        return
+                when (type) {
+                    "load" -> {
+                        val config = body.optJSONObject("payload")
+                        if (config != null) {
+                            latestWidgetConfig = config
+                            Log.d("Userback", "latestWidgetConfig loaded successfully")
+                        } else {
+                            Log.w("Userback", "Received 'load' message without config payload.")
+                        }
                     }
-                }
-
-                // Handle close events
-                if (type.equals("close", ignoreCase = true) || eventName.equals("close", ignoreCase = true)) {
-                    close()
-                    return
+                    "widget_action" -> {
+                        handleWidgetAction(body)
+                    }
+                    "close" -> {
+                        close()
+                    }
+                    else -> {
+                        val event = body.optString("event")
+                        if (event.equals("close", ignoreCase = true)) {
+                            close()
+                        } else {
+                            Log.d("Userback", "Ignoring unsupported script message type: $type")
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 if (payload.equals("close", ignoreCase = true)) {
                     close()
-                    return
+                } else {
+                    Log.e("Userback", "Error parsing script message body: $payload", e)
                 }
-                Log.e("Userback", "Error parsing postMessage payload", e)
             }
         }
     }
@@ -366,12 +389,14 @@ object Userback {
             allowFileAccess = true
             allowContentAccess = true
         }
+        webView.setBackgroundColor(Color.parseColor("#EEEEEE"))
         webView.addJavascriptInterface(UserbackJsBridge(), "userbackSDK")
         WebView.setWebContentsDebuggingEnabled(true)
         webView.webChromeClient = WebChromeClient()
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
+                Log.d("Userback", "onPageFinished: $url")
                 val js = buildInjectedJS()
                 view.evaluateJavascript(js, null)
                 flushPendingEvents(view)
@@ -384,7 +409,7 @@ object Userback {
                 }
             }
         }
-        webView.loadDataWithBaseURL("https://static.userback.io", INITIAL_HTML.trimIndent(), "text/html", "utf-8", null)
+        webView.loadDataWithBaseURL("https://static.userback.io", INITIAL_HTML.trimIndent(), "text/html", "utf-8", "https://static.userback.io")
         return webView
     }
 
