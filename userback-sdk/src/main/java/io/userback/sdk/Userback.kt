@@ -197,8 +197,17 @@ object Userback {
 
         val js = """
             (function() {
-                var event = new CustomEvent('$jsEventName', { detail: $event });
-                window.dispatchEvent(event);
+                var nativePayload = $event;
+                if (nativePayload && typeof nativePayload === 'object' && nativePayload.mobileSDK === undefined) {
+                    nativePayload.mobileSDK = true;
+                }
+                var nativeDetail = {
+                    type: 'native_event',
+                    payload: nativePayload,
+                    mobileSDK: true
+                };
+                var customEvent = new CustomEvent('$jsEventName', { detail: nativeDetail });
+                window.dispatchEvent(customEvent);
             })();
         """.trimIndent()
 
@@ -219,6 +228,21 @@ object Userback {
                     val msg = line ?: continue
                     if (msg.isBlank() || msg.startsWith("-----")) continue
                     if (msg.contains("Userback") || msg.contains("UserbackJS")) continue
+                    if (msg.contains("chromium", ignoreCase = true)) continue
+                    if (msg.contains("native log event", ignoreCase = true)) continue
+                    if (msg.contains("userback:nativeLogEvent", ignoreCase = true)) continue
+                    // Skip noisy Android system tags
+                    if (msg.startsWith("I/HWUI") || msg.startsWith("D/HWUI")) continue
+                    if (msg.contains("Davey!", ignoreCase = true)) continue
+                    if (msg.startsWith("D/InsetsController") || msg.startsWith("I/InsetsController")) continue
+                    if (msg.startsWith("D/ViewRootImpl") || msg.startsWith("I/ViewRootImpl")) continue
+                    if (msg.startsWith("D/InputMethodManager") || msg.startsWith("I/InputMethodManager")) continue
+                    if (msg.startsWith("I/OpenGLRenderer") || msg.startsWith("D/OpenGLRenderer")) continue
+                    if (msg.startsWith("I/SurfaceFlinger") || msg.startsWith("D/SurfaceFlinger")) continue
+                    if (msg.startsWith("D/EGL_emulation") || msg.startsWith("I/EGL_emulation")) continue
+                    if (msg.startsWith("D/gralloc") || msg.startsWith("I/gralloc")) continue
+                    if (msg.startsWith("I/chatty") || msg.startsWith("D/chatty")) continue
+                    if (msg.startsWith("W/System.err")) continue
 
                     val level = when {
                         msg.startsWith("E/") -> "error"
@@ -230,11 +254,12 @@ object Userback {
 
                     val event = JSONObject().apply {
                         put("eventType", "console")
-                        put("type", "console")
+                        put("type", "log")
                         put("message", msg)
                         put("level", level)
                         put("timestamp", System.currentTimeMillis())
                     }
+
                     sendNativeEvent(event)
                 }
             } catch (_: Exception) { }
@@ -250,7 +275,17 @@ object Userback {
                 put("type", "native_screenshot")
                 put("payload", JSONObject().apply { put("data_url", dataUrl) })
             }
-            val js = "(function(){ window.dispatchEvent(new CustomEvent('userback:nativeScreenshot', { detail: $payload })); })();"
+            val js = """
+                (function() {
+                    var nativeDetail = $payload;
+                    var event = new CustomEvent('userback:nativeScreenshot', { detail: nativeDetail });
+                    try {
+                        event.payload = nativeDetail;
+                        Object.assign(event, nativeDetail);
+                    } catch (ignored) {}
+                    window.dispatchEvent(event);
+                })();
+            """.trimIndent()
             webView.post { webView.evaluateJavascript(js, null) }
             return
         }
@@ -271,7 +306,17 @@ object Userback {
                         put("type", "native_screenshot")
                         put("payload", JSONObject().apply { put("data_url", "data:image/jpeg;base64,$base64Image") })
                     }
-                    val js = "(function(){ window.dispatchEvent(new CustomEvent('userback:nativeScreenshot', { detail: $payload })); })();"
+                    val js = """
+                        (function() {
+                            var nativeDetail = $payload;
+                            var event = new CustomEvent('userback:nativeScreenshot', { detail: nativeDetail });
+                            try {
+                                event.payload = nativeDetail;
+                                Object.assign(event, nativeDetail);
+                            } catch (ignored) {}
+                            window.dispatchEvent(event);
+                        })();
+                    """.trimIndent()
                     webView.evaluateJavascript(js, null)
                 } else {
                     webView.visibility = View.VISIBLE
@@ -292,6 +337,23 @@ object Userback {
         webViews.forEach { it.post { it.evaluateJavascript(js, null) } }
     }
 
+    private fun resizeWebView(widthDp: Int, heightDp: Int) {
+        val webView = webViews.firstOrNull() ?: return
+        webView.post {
+            val density = webView.resources.displayMetrics.density
+            val heightPx = (heightDp * density).toInt()
+            val lp = webView.layoutParams as? android.widget.FrameLayout.LayoutParams
+                ?: android.widget.FrameLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    heightPx
+                ).also { it.gravity = android.view.Gravity.BOTTOM }
+            lp.width = android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            lp.height = heightPx
+            lp.gravity = android.view.Gravity.BOTTOM
+            webView.layoutParams = lp
+        }
+    }
+
     private class UserbackJsBridge {
         @JavascriptInterface
         fun postMessage(payload: String) {
@@ -300,6 +362,14 @@ object Userback {
                 when (body.optString("type").lowercase()) {
                     "load" -> latestWidgetConfig = body.optJSONObject("payload")
                     "widget_action" -> if (body.optJSONObject("payload")?.optString("action") == "attachScreenshot") captureAndSendScreenshot()
+                    "widget_resize" -> {
+                        val p = body.optJSONObject("payload")
+                        if (p != null) {
+                            val w = p.optInt("width", 0)
+                            val h = p.optInt("height", 0)
+                            if (h > 0) resizeWebView(w, h)
+                        }
+                    }
                     "close" -> close()
                     else -> if (body.optString("event").lowercase() == "close") close()
                 }
