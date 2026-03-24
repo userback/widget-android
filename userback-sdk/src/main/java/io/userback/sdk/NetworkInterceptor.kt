@@ -1,6 +1,7 @@
 package io.userback.sdk
 
 import okhttp3.Interceptor
+import okhttp3.Request
 import okhttp3.Response
 import org.json.JSONObject
 import java.io.IOException
@@ -10,6 +11,7 @@ class NetworkInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val startTime = System.currentTimeMillis()
+        val requestInitiatorType = initiatorType(request)
         
         val response = try {
             chain.proceed(request)
@@ -23,7 +25,8 @@ class NetworkInterceptor : Interceptor {
                 put("startTime", startTime)
                 put("duration", System.currentTimeMillis() - startTime)
                 put("timestamp", System.currentTimeMillis())
-                put("type", initiatorType(request.header("Accept"), request.header("X-Requested-With")))
+                put("type", requestInitiatorType)
+                put("initiatorType", requestInitiatorType)
                 put("error", e.message)
             }
             Userback.sendNativeEvent(event)
@@ -41,7 +44,8 @@ class NetworkInterceptor : Interceptor {
             put("startTime", startTime)
             put("duration", duration)
             put("timestamp", System.currentTimeMillis())
-            put("type", initiatorType(request.header("Accept"), request.header("X-Requested-With")))
+            put("type", requestInitiatorType)
+            put("initiatorType", requestInitiatorType)
             put("encodedBodySize", response.body?.contentLength() ?: 0)
             put("transferSize", response.body?.contentLength() ?: 0)
         }
@@ -50,14 +54,34 @@ class NetworkInterceptor : Interceptor {
         return response
     }
 
-    private fun initiatorType(accept: String?, xRequestedWith: String?): String {
-        if (xRequestedWith?.lowercase() == "xmlhttprequest") return "xmlhttprequest"
-        val a = accept?.lowercase() ?: return "other"
+    private fun initiatorType(request: Request): String {
+        val xRequestedWith = request.header("X-Requested-With")?.lowercase()
+        if (xRequestedWith == "xmlhttprequest") return "xmlhttprequest"
+
+        val secFetchDest = request.header("Sec-Fetch-Dest")?.lowercase()
+        if (!secFetchDest.isNullOrBlank()) {
+            if (secFetchDest == "empty") return "fetch"
+            return secFetchDest
+        }
+
+        val secFetchMode = request.header("Sec-Fetch-Mode")?.lowercase()
+        if (!secFetchMode.isNullOrBlank()) {
+            if (secFetchMode == "navigate") return "document"
+            if (secFetchMode == "cors" || secFetchMode == "no-cors" || secFetchMode == "same-origin") {
+                return "fetch"
+            }
+        }
+
+        val a = request.header("Accept")?.lowercase() ?: return "fetch"
         return when {
             a.contains("javascript") -> "script"
             a.contains("text/css") -> "style"
             a.contains("image/") -> "image"
             a.contains("text/html") -> "document"
+            a.contains("application/json") -> "fetch"
+            a.contains("text/plain") -> "fetch"
+            a.contains("application/octet-stream") -> "fetch"
+            a.contains("*/*") -> "fetch"
             else -> "other"
         }
     }
