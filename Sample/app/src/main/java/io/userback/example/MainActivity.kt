@@ -114,7 +114,7 @@ class MainActivity : AppCompatActivity() {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            ).also { it.gravity = android.view.Gravity.BOTTOM }
             visibility = View.GONE
             // Set a red border around the webview for debugging
             setBackgroundResource(R.drawable.webview_border)
