@@ -243,6 +243,16 @@ object Userback {
                     if (msg.startsWith("D/gralloc") || msg.startsWith("I/gralloc")) continue
                     if (msg.startsWith("I/chatty") || msg.startsWith("D/chatty")) continue
                     if (msg.startsWith("W/System.err")) continue
+                    if (msg.startsWith("E/RippleDrawable") || msg.startsWith("W/RippleDrawable")) continue
+                    if (msg.startsWith("D/WindowOnBackDispatcher") || msg.startsWith("W/WindowOnBackDispatcher")) continue
+                    if (msg.startsWith("W/InputEventReceiver")) continue
+                    if (msg.startsWith("I/AssistStructure") || msg.startsWith("D/AssistStructure")) continue
+                    if (msg.startsWith("I/ImeTracker") || msg.startsWith("D/ImeTracker") || msg.startsWith("W/ImeTracker")) continue
+                    if (msg.startsWith("W/InteractionJankMonitor") || msg.startsWith("I/InteractionJankMonitor")) continue
+                    if (msg.startsWith("D/ProfileInstaller") || msg.startsWith("I/ProfileInstaller")) continue
+                    if (msg.contains("userfaultfd", ignoreCase = true)) continue
+                    if (msg.contains("NativeAlloc concurrent", ignoreCase = true)) continue
+                    if (msg.contains("concurrent mark compact GC", ignoreCase = true)) continue
 
                     val level = when {
                         msg.startsWith("E/") -> "error"
