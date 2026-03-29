@@ -33,6 +33,9 @@ object Userback {
     private val webViews = Collections.newSetFromMap(WeakHashMap<WebView, Boolean>())
 
     private var latestWidgetConfig: JSONObject? = null
+    private var latestWidgetWidth: Int = 0
+    private var latestWidgetHeight: Int = 0
+    private var configCallbacks: android.content.ComponentCallbacks? = null
     private var isLogCaptureStarted = false
     private var isWidgetInjected = false
     private var cachedScreenshotDataUrl: String? = null
@@ -85,6 +88,7 @@ object Userback {
         this.appContext = context.applicationContext
         configure(accessToken, userData, widgetCSS, surveyURL, requestURL, trackURL, scriptURL)
         startLogCapture()
+        startConfigurationObserver()
     }
 
     fun getInterceptor(): NetworkInterceptor {
@@ -106,6 +110,57 @@ object Userback {
     }
 
     fun startWidget() { callUserback("start") }
+
+    private fun handleConfigurationChanged(newConfig: android.content.res.Configuration) {
+        val webView = webViews.firstOrNull() ?: return
+        val dm = webView.resources.displayMetrics
+        val screenWidth = (dm.widthPixels / dm.density).toInt()
+        val screenHeight = (dm.heightPixels / dm.density).toInt()
+        val orientation = newConfig.orientation
+
+        val message = JSONObject().apply {
+            put("type", "native_rotate")
+            put("mobileSDK", true)
+            put("payload", JSONObject().apply {
+                put("orientation", orientation)
+                put("screenWidth", screenWidth)
+                put("screenHeight", screenHeight)
+                put("mobileSDK", true)
+            })
+        }
+        val js = """
+            (function() {
+                var detail = $message;
+                var event = new CustomEvent('userback:rotate', { detail: detail });
+                window.dispatchEvent(event);
+            })();
+        """.trimIndent()
+
+        Log.d("Userback", "Dispatching rotate event: $message")
+        webViews.forEach { it.post { it.evaluateJavascript(js, null) } }
+
+        if (latestWidgetWidth > 0 && latestWidgetHeight > 0) {
+            resizeWebView(latestWidgetWidth, latestWidgetHeight)
+        }
+        applyBreakpoint()
+    }
+
+    private fun startConfigurationObserver() {
+        if (configCallbacks != null) return
+        val callbacks = object : android.content.ComponentCallbacks {
+            override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+                handleConfigurationChanged(newConfig)
+            }
+            override fun onLowMemory() {}
+        }
+        appContext?.registerComponentCallbacks(callbacks)
+        configCallbacks = callbacks
+    }
+
+    private fun stopConfigurationObserver() {
+        configCallbacks?.let { appContext?.unregisterComponentCallbacks(it) }
+        configCallbacks = null
+    }
     fun refresh(refreshFeedback: Boolean = true, refreshSurvey: Boolean = true) { callUserback("refresh", refreshFeedback, refreshSurvey) }
     fun destroy(keepInstance: Boolean = false, keepRecorder: Boolean = false) { callUserback("destroy", keepInstance, keepRecorder) }
 
@@ -123,6 +178,15 @@ object Userback {
                     cachedScreenshotDataUrl = "data:image/jpeg;base64," +
                         Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
                 }
+                val lp = webView.layoutParams as? android.widget.FrameLayout.LayoutParams
+                    ?: android.widget.FrameLayout.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                lp.width = android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                lp.height = android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                lp.gravity = android.view.Gravity.CENTER
+                webView.layoutParams = lp
                 webView.visibility = View.VISIBLE
                 webView.bringToFront()
             }
@@ -347,19 +411,68 @@ object Userback {
         webViews.forEach { it.post { it.evaluateJavascript(js, null) } }
     }
 
+    private fun applyBreakpoint() {
+        val webView = webViews.firstOrNull() ?: return
+        webView.post {
+            val density = webView.resources.displayMetrics.density
+            val isTablet = webView.resources.displayMetrics.widthPixels / density > 800
+            val js = """
+                (function() {
+                    var container = document.querySelector('.userback-button-container');
+                    if (container) {
+                        if ($isTablet) {
+                            container.setAttribute('data-breakpoint', 'tablet');
+                        } else {
+                            container.removeAttribute('data-breakpoint');
+                        }
+                    }
+                })();
+            """.trimIndent()
+            webView.evaluateJavascript(js, null)
+        }
+    }
+
+    private enum class WidgetPosition(val value: String) {
+        W("w"), E("e"), SW("sw"), SE("se");
+
+        companion object {
+            fun from(rawValue: String): WidgetPosition =
+                entries.find { it.value == rawValue.lowercase() } ?: SE
+        }
+    }
+
+    private fun widgetPositionFromConfig(): WidgetPosition {
+        val raw = latestWidgetConfig?.optString("position") ?: return WidgetPosition.SE
+        if (raw.isEmpty()) return WidgetPosition.SE
+        return WidgetPosition.from(raw)
+    }
+
     private fun resizeWebView(widthDp: Int, heightDp: Int) {
         val webView = webViews.firstOrNull() ?: return
         webView.post {
             val density = webView.resources.displayMetrics.density
-            val heightPx = (heightDp * density).toInt()
+            val screenWidthDp = webView.resources.displayMetrics.widthPixels / density
             val lp = webView.layoutParams as? android.widget.FrameLayout.LayoutParams
                 ?: android.widget.FrameLayout.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    heightPx
-                ).also { it.gravity = android.view.Gravity.BOTTOM }
-            lp.width = android.view.ViewGroup.LayoutParams.MATCH_PARENT
-            lp.height = heightPx
-            lp.gravity = android.view.Gravity.BOTTOM
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                )
+
+            if (widthDp > 0 && heightDp > 0 && screenWidthDp > 800) {
+                lp.width = (widthDp * density).toInt()
+                lp.height = (heightDp * density).toInt()
+                lp.gravity = when (widgetPositionFromConfig()) {
+                    WidgetPosition.W  -> android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+                    WidgetPosition.E  -> android.view.Gravity.END   or android.view.Gravity.CENTER_VERTICAL
+                    WidgetPosition.SW -> android.view.Gravity.START  or android.view.Gravity.BOTTOM
+                    WidgetPosition.SE -> android.view.Gravity.END    or android.view.Gravity.BOTTOM
+                }
+            } else {
+                lp.width = android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                lp.height = android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                lp.gravity = android.view.Gravity.CENTER
+            }
+
             webView.layoutParams = lp
         }
     }
@@ -370,14 +483,24 @@ object Userback {
             try {
                 val body = JSONObject(payload)
                 when (body.optString("type").lowercase()) {
-                    "load" -> latestWidgetConfig = body.optJSONObject("payload")
+                    "load" -> {
+                        latestWidgetConfig = body.optJSONObject("payload")
+                        if (latestWidgetWidth > 0 && latestWidgetHeight > 0) {
+                            resizeWebView(latestWidgetWidth, latestWidgetHeight)
+                        }
+                    }
                     "widget_action" -> if (body.optJSONObject("payload")?.optString("action") == "attachScreenshot") captureAndSendScreenshot()
                     "widget_resize" -> {
                         val p = body.optJSONObject("payload")
                         if (p != null) {
                             val w = p.optInt("width", 0)
                             val h = p.optInt("height", 0)
-                            if (h > 0) resizeWebView(w, h)
+                            if (h > 0) {
+                                latestWidgetWidth = w
+                                latestWidgetHeight = h
+                                resizeWebView(w, h)
+                                applyBreakpoint()
+                            }
                         }
                     }
                     "close" -> close()
