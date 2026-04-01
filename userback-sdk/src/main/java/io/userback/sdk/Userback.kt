@@ -36,6 +36,8 @@ object Userback {
     private var latestWidgetWidth: Int = 0
     private var latestWidgetHeight: Int = 0
     private var configCallbacks: android.content.ComponentCallbacks? = null
+    private var formOpenTimeoutRunnable: Runnable? = null
+    private val formOpenHandler = Handler(Looper.getMainLooper())
     private var isLogCaptureStarted = false
     private var isWidgetInjected = false
     private var cachedScreenshotDataUrl: String? = null
@@ -189,6 +191,14 @@ object Userback {
                 webView.layoutParams = lp
                 webView.visibility = View.VISIBLE
                 webView.bringToFront()
+
+                formOpenTimeoutRunnable?.let { formOpenHandler.removeCallbacks(it) }
+                val runnable = Runnable {
+                    Log.d("Userback", "openForm timed out — JS SDK did not respond. Closing WebView.")
+                    close()
+                }
+                formOpenTimeoutRunnable = runnable
+                formOpenHandler.postDelayed(runnable, 5000)
             }
         }
         callUserback("openForm", mode, directTo)
@@ -496,6 +506,8 @@ object Userback {
                             val w = p.optInt("width", 0)
                             val h = p.optInt("height", 0)
                             if (h > 0) {
+                                formOpenTimeoutRunnable?.let { formOpenHandler.removeCallbacks(it) }
+                                formOpenTimeoutRunnable = null
                                 latestWidgetWidth = w
                                 latestWidgetHeight = h
                                 resizeWebView(w, h)
@@ -503,6 +515,7 @@ object Userback {
                             }
                         }
                     }
+                    "load_error" -> close()
                     "close" -> close()
                     else -> if (body.optString("event").lowercase() == "close") close()
                 }

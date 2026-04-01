@@ -1,3 +1,10 @@
+import java.util.Properties
+
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -23,10 +30,10 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("String", "USERBACK_TOKEN", "\"P-munRw6sN7ExmKIuAwNvumliFy\"")
-            buildConfigField("String", "USERBACK_API_URL", "\"https://api.userback.ngrok.dev/\"")
-            buildConfigField("String", "USERBACK_EVENTS_URL", "\"https://events.userback.ngrok.dev\"")
-            buildConfigField("String", "USERBACK_BASE_URL", "\"https://app.userback.ngrok.dev\"")
+            buildConfigField("String", "USERBACK_TOKEN", "\"${localProps.getProperty("USERBACK_TOKEN", "")}\"")
+            buildConfigField("String", "USERBACK_API_URL", "\"${localProps.getProperty("USERBACK_API_URL", "https://api.userback.io/")}\"")
+            buildConfigField("String", "USERBACK_EVENTS_URL", "\"${localProps.getProperty("USERBACK_EVENTS_URL", "https://events.userback.io")}\"")
+            buildConfigField("String", "USERBACK_BASE_URL", "\"${localProps.getProperty("USERBACK_BASE_URL", "https://static.userback.io")}\"")
         }
         release {
             isMinifyEnabled = false
@@ -34,11 +41,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // Replace these with your actual production URLs
-            buildConfigField("String", "USERBACK_TOKEN", "\"YOUR_PRODUCTION_TOKEN\"")
-            buildConfigField("String", "USERBACK_API_URL", "\"https://api.userback.io/\"")
-            buildConfigField("String", "USERBACK_EVENTS_URL", "\"https://events.userback.io\"")
-            buildConfigField("String", "USERBACK_BASE_URL", "\"https://static.userback.io\"")
+            buildConfigField("String", "USERBACK_TOKEN", "\"${localProps.getProperty("USERBACK_TOKEN", "")}\"")
+            buildConfigField("String", "USERBACK_API_URL", "\"${localProps.getProperty("USERBACK_API_URL", "https://api.userback.io/")}\"")
+            buildConfigField("String", "USERBACK_EVENTS_URL", "\"${localProps.getProperty("USERBACK_EVENTS_URL", "https://events.userback.io")}\"")
+            buildConfigField("String", "USERBACK_BASE_URL", "\"${localProps.getProperty("USERBACK_BASE_URL", "https://static.userback.io")}\"")
         }
     }
     compileOptions {
