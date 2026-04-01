@@ -1,5 +1,6 @@
 package io.userback.sdk
 
+import io.userback.sdk.BuildConfig
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -27,6 +28,7 @@ object Userback {
     private var requestURL: String? = null
     private var trackURL: String? = null
     private var scriptURL: String? = null
+    const val SDK_VERSION = "1.0.0"
     private const val DEFAULT_JS = "https://static.userback.io/widget/v1.js"
 
     private var isRecording: Boolean = false
@@ -192,13 +194,15 @@ object Userback {
                 webView.visibility = View.VISIBLE
                 webView.bringToFront()
 
-                formOpenTimeoutRunnable?.let { formOpenHandler.removeCallbacks(it) }
-                val runnable = Runnable {
-                    Log.d("Userback", "openForm timed out — JS SDK did not respond. Closing WebView.")
-                    close()
+                if (latestWidgetConfig == null) {
+                    formOpenTimeoutRunnable?.let { formOpenHandler.removeCallbacks(it) }
+                    val runnable = Runnable {
+                        Log.d("Userback", "openForm timed out — JS SDK did not respond. Closing WebView.")
+                        close()
+                    }
+                    formOpenTimeoutRunnable = runnable
+                    formOpenHandler.postDelayed(runnable, 5000)
                 }
-                formOpenTimeoutRunnable = runnable
-                formOpenHandler.postDelayed(runnable, 5000)
             }
         }
         callUserback("openForm", mode, directTo)
@@ -421,6 +425,32 @@ object Userback {
         webViews.forEach { it.post { it.evaluateJavascript(js, null) } }
     }
 
+    private fun sendDeviceSize() {
+        val webView = webViews.firstOrNull() ?: return
+        webView.post {
+            val dm = webView.resources.displayMetrics
+            val container = webView.parent as? android.view.View
+            val deviceWidth = ((container?.width ?: dm.widthPixels) / dm.density).toInt()
+            val deviceHeight = ((container?.height ?: dm.heightPixels) / dm.density).toInt()
+            val message = JSONObject().apply {
+                put("type", "native_device_size")
+                put("mobileSDK", true)
+                put("payload", JSONObject().apply {
+                    put("deviceWidth", deviceWidth)
+                    put("deviceHeight", deviceHeight)
+                    put("mobileSDK", true)
+                })
+            }
+            val js = """
+                (function() {
+                    var detail = $message;
+                    window.dispatchEvent(new CustomEvent('userback:nativeDeviceSize', { detail: detail }));
+                })();
+            """.trimIndent()
+            webView.evaluateJavascript(js, null)
+        }
+    }
+
     private fun applyBreakpoint() {
         val webView = webViews.firstOrNull() ?: return
         webView.post {
@@ -470,7 +500,7 @@ object Userback {
 
             if (widthDp > 0 && heightDp > 0 && screenWidthDp > 800) {
                 lp.width = (widthDp * density).toInt()
-                lp.height = (heightDp * density).toInt()
+                lp.height = ((heightDp + 20) * density).toInt()
                 lp.gravity = when (widgetPositionFromConfig()) {
                     WidgetPosition.W  -> android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
                     WidgetPosition.E  -> android.view.Gravity.END   or android.view.Gravity.CENTER_VERTICAL
@@ -484,6 +514,7 @@ object Userback {
             }
 
             webView.layoutParams = lp
+            sendDeviceSize()
         }
     }
 
@@ -516,6 +547,10 @@ object Userback {
                         }
                     }
                     "load_error" -> close()
+                    "hcaptcha_required" -> {
+                        val message = body.optJSONObject("payload")?.optString("message") ?: "hCaptcha required"
+                        Log.d("Userback", "JS SDK hCaptcha required: $message. Closing WebView.")
+                    }
                     "close" -> close()
                     else -> if (body.optString("event").lowercase() == "close") close()
                 }
@@ -567,15 +602,51 @@ object Userback {
             is JSONObject -> value.toString()
             else -> JSONObject.wrap(value).toString()
         }
+
+        val ctx = appContext ?: return ""
+        val pm = ctx.packageManager
+        val packageInfo = try { pm.getPackageInfo(ctx.packageName, 0) } catch (e: Exception) { null }
+        val appVersion = packageInfo?.versionName ?: "unknown"
+        val versionCode = packageInfo?.longVersionCode?.toString() ?: ""
+        val fullAppVersion = if (versionCode.isNotEmpty()) "$appVersion ($versionCode)" else appVersion
+
+        val dm = ctx.resources.displayMetrics
+        val screenWidthPx = dm.widthPixels
+        val screenHeightPx = dm.heightPixels
+        val density = dm.density
+
+        val nativeEnv = JSONObject().apply {
+            put("platform", "android")
+            put("sdk_version", SDK_VERSION)
+            put("app_version", fullAppVersion)
+            put("os_version", android.os.Build.VERSION.RELEASE)
+            put("device_model", android.os.Build.MODEL)
+            put("device_name", android.os.Build.DEVICE)
+            put("resolution_x", screenWidthPx)
+            put("resolution_y", screenHeightPx)
+            put("screen_width_pt", (screenWidthPx / density).toInt())
+            put("screen_height_pt", (screenHeightPx / density).toInt())
+            put("dpi_scale", density)
+        }
+
+        val nativeUaData = JSONObject().apply {
+            put("platform", "android")
+            put("platformVersion", android.os.Build.VERSION.RELEASE)
+            put("model", android.os.Build.MODEL)
+            put("sdkVersion", SDK_VERSION)
+        }
+
         return """
             window.Userback = window.Userback || {};
             Userback.load_type = "mobile_sdk";
             Userback.access_token = ${jsonString(accessToken)};
             Userback.user_data = ${jsonString(userData)};
-            Userback.widget_css = ${jsonString(widgetCSS)};
-            Userback.survey_url = ${jsonString(surveyURL)};
-            Userback.request_url = ${jsonString(requestURL)};
-            Userback.track_url = ${jsonString(trackURL)};
+            Userback.native_env = $nativeEnv;
+            Userback.native_ua_data = $nativeUaData;
+            ${if (BuildConfig.DEBUG) "Userback.widget_css = ${jsonString(widgetCSS)};" else ""}
+            ${if (BuildConfig.DEBUG) "Userback.survey_url = ${jsonString(surveyURL)};" else ""}
+            ${if (BuildConfig.DEBUG) "Userback.request_url = ${jsonString(requestURL)};" else ""}
+            ${if (BuildConfig.DEBUG) "Userback.track_url = ${jsonString(trackURL)};" else ""}
             (function(d){
                 var s = d.createElement('script');
                 s.async = true;
