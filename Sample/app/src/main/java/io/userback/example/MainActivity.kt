@@ -109,16 +109,6 @@ class MainActivity : AppCompatActivity() {
         createProfileView()
         createEndpointTesterView()
 
-        // Create Userback WebView (Overlay)
-        Userback.createWebView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            ).also { it.gravity = android.view.Gravity.BOTTOM }
-            visibility = View.GONE
-            rootContainer.addView(this)
-        }
-
         // Bottom Menu
         bottomMenuContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
