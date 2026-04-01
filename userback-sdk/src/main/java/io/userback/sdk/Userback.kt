@@ -576,7 +576,7 @@ object Userback {
         }
         webView.setBackgroundColor(Color.TRANSPARENT)
         webView.addJavascriptInterface(UserbackJsBridge(), "userbackSDK")
-        WebView.setWebContentsDebuggingEnabled(true)
+        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
@@ -586,7 +586,7 @@ object Userback {
                 }
             }
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
-                if (scriptURL?.contains(".net") == true || scriptURL?.contains("ngrok") == true) handler.proceed() else super.onReceivedSslError(view, handler, error)
+                if (BuildConfig.DEBUG && (scriptURL?.contains(".net") == true || scriptURL?.contains("ngrok") == true)) handler.proceed() else super.onReceivedSslError(view, handler, error)
             }
         }
         webView.loadDataWithBaseURL("https://static.userback.io", INITIAL_HTML.trimIndent(), "text/html", "utf-8", "https://static.userback.io")
