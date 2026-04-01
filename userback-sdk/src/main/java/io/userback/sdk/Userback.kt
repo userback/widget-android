@@ -1,6 +1,7 @@
 package io.userback.sdk
 
 import io.userback.sdk.BuildConfig
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -12,7 +13,9 @@ import android.os.Looper
 import android.util.Base64
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.*
+import android.widget.FrameLayout
 import androidx.core.net.toUri
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -93,6 +96,19 @@ object Userback {
         configure(accessToken, userData, widgetCSS, surveyURL, requestURL, trackURL, scriptURL)
         startLogCapture()
         startConfigurationObserver()
+
+        // Automatically attach WebView overlay after Activity layout is ready
+        (context as? Activity)?.let { activity ->
+            val webView = makeWebView(activity)
+            val lp = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            webView.visibility = View.GONE
+            Handler(Looper.getMainLooper()).post {
+                activity.addContentView(webView, lp)
+            }
+        }
     }
 
     fun getInterceptor(): NetworkInterceptor {
