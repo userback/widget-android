@@ -9,98 +9,63 @@ The Userback Android SDK allows you to integrate the Userback feedback widget in
 
 ## Installation
 
-### Option 1 — Local module (source)
+### Step 1
 
-1. Copy the `userback-sdk` directory into the root of your project.
-
-2. Register the module in `settings.gradle.kts`:
+Add JitPack to your `settings.gradle.kts`:
 
 ```kotlin
-include(":userback-sdk")
-```
-
-3. Add the dependency in your app's `build.gradle.kts`:
-
-```kotlin
-dependencies {
-    implementation(project(":userback-sdk"))
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
 }
 ```
 
-### Option 2 — AAR file
+### Step 2
 
-1. Build the release AAR:
-   ```
-   ./gradlew :userback-sdk:assembleRelease
-   ```
-   The output is at `userback-sdk/build/outputs/aar/userback-sdk-release.aar`.
-
-2. Place the AAR in your app's `libs/` folder.
-
-3. Add it as a dependency in `build.gradle.kts`:
+Add the dependency to your app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation(files("libs/userback-sdk-release.aar"))
-    // Required transitive dependencies
-    implementation("com.squareup.okhttp3:okhttp:4.x.x")
+    implementation("com.github.userback:widget-android:1.0.0")
 }
 ```
 
----
+### Step 3
 
-## Manifest
-
-Add internet permission to your `AndroidManifest.xml`:
+Add internet permission and `configChanges` to your `AndroidManifest.xml`:
 
 ```xml
 <uses-permission android:name="android.permission.INTERNET" />
-```
 
-To prevent the Activity from recreating on rotation (required for the widget to survive orientation changes):
-
-```xml
 <activity
     android:name=".YourActivity"
     android:configChanges="orientation|screenSize|screenLayout" />
 ```
 
----
+### Step 4
 
-## Setup
-
-### 1. Initialize the SDK
-
-Call `Userback.init()` once, typically in your `Activity.onCreate()` or `Application` class:
+Initialize Userback in your `Activity.onCreate()`:
 
 ```kotlin
 import io.userback.sdk.Userback
 
-Userback.init(
-    context = this,
-    accessToken = "YOUR_ACCESS_TOKEN",
-    userData = mapOf(
-        "id" to "user-123",
-        "info" to mapOf(
-            "name" to "Jane Smith",
-            "email" to "jane@example.com"
+override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+
+    Userback.init(
+        context = this,
+        accessToken = "YOUR_ACCESS_TOKEN",
+        userData = mapOf(
+            "id" to "user-123",
+            "info" to mapOf(
+                "name" to "Jane Smith",
+                "email" to "jane@example.com"
+            )
         )
     )
-)
-```
-
-### 2. Create and attach the WebView
-
-Create the Userback WebView and add it as an overlay on top of your root layout:
-
-```kotlin
-Userback.createWebView(this).apply {
-    layoutParams = FrameLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.MATCH_PARENT
-    )
-    visibility = View.GONE
-    rootContainer.addView(this)  // rootContainer is your top-level FrameLayout
 }
 ```
 
@@ -169,5 +134,8 @@ val client = OkHttpClient.Builder()
 A working example is in the [`Sample/`](Sample/) directory. To run it:
 
 1. Open the project in Android Studio.
-2. Set your access token in `Sample/app/build.gradle.kts` under `buildConfigField("String", "USERBACK_TOKEN", ...)`.
+2. Set your access token in `local.properties`:
+   ```
+   USERBACK_TOKEN=YOUR_ACCESS_TOKEN
+   ```
 3. Run the `Sample.app` configuration on a device or emulator.
