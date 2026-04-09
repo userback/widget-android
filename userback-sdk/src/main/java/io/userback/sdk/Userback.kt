@@ -226,6 +226,7 @@ object Userback {
     fun openPortal() {
         val target = latestWidgetConfig?.optString("portal_target")?.lowercase()
         val url = latestWidgetConfig?.optString("portal_url")
+
         if (target == "redirect" || target == "window") {
             url?.let { if (it.isNotEmpty()) openURL(it) } ?: callUserback("openPortal")
         } else {
@@ -541,11 +542,46 @@ object Userback {
                 when (body.optString("type").lowercase()) {
                     "load" -> {
                         latestWidgetConfig = body.optJSONObject("payload")
+                        Log.d("Userback", "Widget loaded with config: $latestWidgetConfig")
                         if (latestWidgetWidth > 0 && latestWidgetHeight > 0) {
                             resizeWebView(latestWidgetWidth, latestWidgetHeight)
                         }
                     }
-                    "widget_action" -> if (body.optJSONObject("payload")?.optString("action") == "attachScreenshot") captureAndSendScreenshot()
+                    "widget_action" -> {
+                        val p = body.optJSONObject("payload")
+                        val action = p?.optString("action") ?: ""
+                        val target = p?.optString("target")?.lowercase() ?: ""
+
+                        when (action) {
+                            "attachScreenshot" -> captureAndSendScreenshot()
+                            "goToPortal" -> {
+                                if (target == "redirect" || target == "window") {
+                                    latestWidgetConfig?.optString("portal_url")?.let { if (it.isNotEmpty()) openURL(it) }
+                                }
+                            }
+                            "goToRoadmap" -> {
+                                if (target == "redirect" || target == "window") {
+                                    latestWidgetConfig?.optString("roadmap_url")?.takeIf { it.isNotEmpty() }?.let { openURL(it) }
+                                        ?: latestWidgetConfig?.optString("portal_url")?.let { if (it.isNotEmpty()) openURL(it) }
+                                }
+                            }
+                            "goToAnnouncement" -> {
+                                if (target == "redirect" || target == "window") {
+                                    latestWidgetConfig?.optString("announcement_url")?.takeIf { it.isNotEmpty() }?.let { openURL(it) }
+                                        ?: latestWidgetConfig?.optString("portal_url")?.let { if (it.isNotEmpty()) openURL(it) }
+                                }
+                            }
+                            "openHelp" -> {
+                                if (target == "redirect" || target == "window") {
+                                    val url = latestWidgetConfig?.optString("help_link")
+                                    Log.d("Userback", "Help URL from config: $url")
+                                    if (!url.isNullOrEmpty()) openURL(url) else callUserback("openHelp")
+                                } else {
+                                    callUserback("openHelp")
+                                }
+                            }
+                        }
+                    }
                     "widget_resize" -> {
                         val p = body.optJSONObject("payload")
                         if (p != null) {
