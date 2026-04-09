@@ -104,7 +104,7 @@ object Userback {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            webView.visibility = View.GONE
+            webView.visibility = View.INVISIBLE
             Handler(Looper.getMainLooper()).post {
                 activity.addContentView(webView, lp)
             }
@@ -207,7 +207,6 @@ object Userback {
                 lp.height = android.view.ViewGroup.LayoutParams.MATCH_PARENT
                 lp.gravity = android.view.Gravity.CENTER
                 webView.layoutParams = lp
-                webView.visibility = View.VISIBLE
                 webView.bringToFront()
 
                 if (latestWidgetConfig == null) {
@@ -278,7 +277,7 @@ object Userback {
 
     fun close() {
         callUserback("close")
-        webViews.forEach { it.post { it.visibility = View.GONE } }
+        webViews.forEach { it.post { it.visibility = View.INVISIBLE } }
     }
 
     fun sendNativeEvent(event: JSONObject) {
@@ -552,6 +551,7 @@ object Userback {
                         if (p != null) {
                             val w = p.optInt("width", 0)
                             val h = p.optInt("height", 0)
+                            val last = p.optBoolean("last", false)
                             if (h > 0) {
                                 formOpenTimeoutRunnable?.let { formOpenHandler.removeCallbacks(it) }
                                 formOpenTimeoutRunnable = null
@@ -559,6 +559,9 @@ object Userback {
                                 latestWidgetHeight = h
                                 resizeWebView(w, h)
                                 applyBreakpoint()
+                                if (last) {
+                                    webViews.forEach { it.post { it.visibility = View.VISIBLE } }
+                                }
                             }
                         }
                     }
@@ -577,6 +580,7 @@ object Userback {
     }
 
     fun makeWebView(context: Context): WebView {
+        isWidgetInjected = false
         val webView = WebView(context)
         webViews.add(webView)
         webView.settings.apply {
