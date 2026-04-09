@@ -542,7 +542,6 @@ object Userback {
                 when (body.optString("type").lowercase()) {
                     "load" -> {
                         latestWidgetConfig = body.optJSONObject("payload")
-                        Log.d("Userback", "Widget loaded with config: $latestWidgetConfig")
                         if (latestWidgetWidth > 0 && latestWidgetHeight > 0) {
                             resizeWebView(latestWidgetWidth, latestWidgetHeight)
                         }
