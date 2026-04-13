@@ -316,12 +316,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             addBtn("Init Widget") {
-                Userback.initWidget()
-                updateStatus("Called initWidget()")
-            }
-            addBtn("Start Widget") {
-                Userback.startWidget()
-                updateStatus("Called startWidget()")
+                Userback.init(
+                    context = this@MainActivity,
+                    accessToken = BuildConfig.USERBACK_TOKEN
+                )
+                updateStatus("Called init()")
             }
             addBtn("Refresh") {
                 Userback.refresh(refreshFeedback = true, refreshSurvey = true)
