@@ -7,7 +7,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import android.content.Intent
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import io.userback.sdk.Userback
 import android.webkit.WebView
@@ -17,6 +19,9 @@ import java.io.IOException
 import java.util.Date
 
 class MainActivity : AppCompatActivity() {
+    private val fileChooserLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result -> Userback.onActivityResult(result.resultCode, result.data) }
     private lateinit var rootContainer: FrameLayout
     private lateinit var contentFrame: FrameLayout
     private lateinit var bottomMenuContainer: LinearLayout
@@ -55,6 +60,7 @@ class MainActivity : AppCompatActivity() {
             trackURL = BuildConfig.USERBACK_EVENTS_URL,
             scriptURL = "${BuildConfig.USERBACK_BASE_URL}/dist/widget_dev/widget.min.js"
         )
+        Userback.registerFileChooser(fileChooserLauncher)
 
         // 2. Setup UI
         setupUI()

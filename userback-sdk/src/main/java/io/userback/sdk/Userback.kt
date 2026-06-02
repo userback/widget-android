@@ -7,6 +7,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.net.Uri
 import android.net.http.SslError
 import android.os.Handler
 import android.os.Looper
@@ -18,7 +19,9 @@ import android.webkit.*
 import android.widget.FrameLayout
 import androidx.core.net.toUri
 import org.json.JSONObject
+import androidx.activity.result.ActivityResultLauncher
 import java.io.ByteArrayOutputStream
+import java.lang.ref.WeakReference
 import java.util.Collections
 import java.util.WeakHashMap
 
@@ -36,6 +39,10 @@ object Userback {
 
     private var isRecording: Boolean = false
     private val webViews = Collections.newSetFromMap(WeakHashMap<WebView, Boolean>())
+    private var weakActivity: WeakReference<Activity>? = null
+    private var filePathCallback: ValueCallback<Array<Uri>>? = null
+    private var fileChooserLauncher: ActivityResultLauncher<Intent>? = null
+    private const val FILE_CHOOSER_REQUEST = 0x7B01
 
     private var latestWidgetConfig: JSONObject? = null
     private var latestWidgetWidth: Int = 0
@@ -99,6 +106,7 @@ object Userback {
 
         // Automatically attach WebView overlay after Activity layout is ready
         (context as? Activity)?.let { activity ->
+            weakActivity = WeakReference(activity)
             val webView = makeWebView(activity)
             val lp = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -295,6 +303,23 @@ object Userback {
     fun close() {
         callUserback("close")
         webViews.forEach { it.post { it.visibility = View.INVISIBLE } }
+    }
+
+    fun registerFileChooser(launcher: ActivityResultLauncher<Intent>) {
+        fileChooserLauncher = launcher
+    }
+
+    fun onActivityResult(resultCode: Int, data: Intent?) {
+        val callback = filePathCallback ?: return
+        filePathCallback = null
+        callback.onReceiveValue(
+            if (resultCode == Activity.RESULT_OK) WebChromeClient.FileChooserParams.parseResult(resultCode, data)
+            else null
+        )
+    }
+
+    fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == FILE_CHOOSER_REQUEST) onActivityResult(resultCode, data)
     }
 
     fun sendNativeEvent(event: JSONObject) {
@@ -530,7 +555,8 @@ object Userback {
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT
                 )
 
-            if (widthDp > 0 && heightDp > 0 && screenWidthDp > 800) {
+            val isModal = latestWidgetConfig?.optBoolean("use_modal", false) == true
+            if (!isModal && widthDp > 0 && heightDp > 0 && screenWidthDp > 800) {
                 lp.width = (widthDp * density).toInt()
                 lp.height = ((heightDp + 20) * density).toInt()
                 lp.gravity = when (widgetPositionFromConfig()) {
@@ -658,6 +684,39 @@ object Userback {
             }
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
                 if (BuildConfig.DEBUG && (scriptURL?.contains(".net") == true || scriptURL?.contains("ngrok") == true)) handler.proceed() else super.onReceivedSslError(view, handler, error)
+            }
+        }
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(
+                webView: WebView?,
+                callback: ValueCallback<Array<Uri>>,
+                params: FileChooserParams?
+            ): Boolean {
+                filePathCallback?.onReceiveValue(null)
+                filePathCallback = callback
+                val activity = weakActivity?.get() ?: run {
+                    callback.onReceiveValue(null)
+                    filePathCallback = null
+                    return false
+                }
+                val intent = try {
+                    Intent.createChooser(
+                        params?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply { type = "*/*" },
+                        "Select file"
+                    )
+                } catch (_: Exception) {
+                    callback.onReceiveValue(null)
+                    filePathCallback = null
+                    return false
+                }
+                val launcher = fileChooserLauncher
+                if (launcher != null) {
+                    launcher.launch(intent)
+                } else {
+                    @Suppress("DEPRECATION")
+                    activity.startActivityForResult(intent, FILE_CHOOSER_REQUEST)
+                }
+                return true
             }
         }
         webView.loadDataWithBaseURL("https://static.userback.io", INITIAL_HTML.trimIndent(), "text/html", "utf-8", "https://static.userback.io")
