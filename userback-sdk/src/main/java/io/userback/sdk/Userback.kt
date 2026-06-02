@@ -124,13 +124,6 @@ object Userback {
         }
     }
 
-    fun initWidget(options: Map<String, Any> = emptyMap()) {
-        val token = accessToken ?: return
-        callUserback("init", token, JSONObject(options))
-    }
-
-    fun startWidget() { callUserback("start") }
-
     private fun handleConfigurationChanged(newConfig: android.content.res.Configuration) {
         val webView = webViews.firstOrNull() ?: return
         val dm = webView.resources.displayMetrics
@@ -182,7 +175,30 @@ object Userback {
         configCallbacks = null
     }
     fun refresh(refreshFeedback: Boolean = true, refreshSurvey: Boolean = true) { callUserback("refresh", refreshFeedback, refreshSurvey) }
-    fun destroy(keepInstance: Boolean = false, keepRecorder: Boolean = false) { callUserback("destroy", keepInstance, keepRecorder) }
+    fun destroy(keepInstance: Boolean = false, keepRecorder: Boolean = false) {
+        callUserback("destroy", keepInstance, keepRecorder)
+        formOpenTimeoutRunnable?.let { formOpenHandler.removeCallbacks(it) }
+        formOpenTimeoutRunnable = null
+        stopConfigurationObserver()
+        Handler(Looper.getMainLooper()).post {
+            webViews.forEach { webView ->
+                val parent = webView.parent as? ViewGroup
+                if (parent != null) {
+                    parent.removeView(webView)
+                    Log.d("Userback", "destroy: WebView removed from parent=${parent::class.simpleName}")
+                } else {
+                    Log.d("Userback", "destroy: WebView has no parent, skipping removeView (parent=${webView.parent})")
+                }
+                webView.destroy()
+            }
+            webViews.clear()
+        }
+        latestWidgetConfig = null
+        latestWidgetWidth = 0
+        latestWidgetHeight = 0
+        isWidgetInjected = false
+        cachedScreenshotDataUrl = null
+    }
 
     fun openForm(mode: String = "general", directTo: String? = null) {
         Log.d("Userback", "openForm called (Mode: $mode).")

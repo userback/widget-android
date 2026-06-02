@@ -95,6 +95,16 @@ Userback.openAnnouncement()
 Userback.close()
 ```
 
+### Destroy the SDK
+
+Removes the WebView from the view hierarchy, releases all resources, and resets internal state. Call this when you no longer need the SDK — for example, on logout or when tearing down the activity.
+
+```kotlin
+Userback.destroy()
+```
+
+To re-enable the SDK after destroying it, call `Userback.init()` again.
+
 ### Identify a user
 
 ```kotlin
