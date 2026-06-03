@@ -19,40 +19,13 @@ import android.webkit.*
 import android.widget.FrameLayout
 import androidx.core.net.toUri
 import org.json.JSONObject
+import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.fragment.app.Fragment
-import androidx.fragment.app.FragmentActivity
 import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
 import java.util.Collections
 import java.util.WeakHashMap
-
-internal class UserbackFilePickerFragment : Fragment() {
-    private var pendingCallback: ValueCallback<Array<Uri>>? = null
-
-    private val launcher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val cb = pendingCallback ?: return@registerForActivityResult
-        pendingCallback = null
-        cb.onReceiveValue(
-            if (result.resultCode == Activity.RESULT_OK)
-                WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
-            else null
-        )
-    }
-
-    fun launch(intent: Intent, callback: ValueCallback<Array<Uri>>) {
-        pendingCallback?.onReceiveValue(null)
-        pendingCallback = callback
-        launcher.launch(intent)
-    }
-
-    companion object {
-        const val TAG = "UserbackFilePicker"
-    }
-}
 
 object Userback {
     private var appContext: Context? = null
@@ -70,6 +43,7 @@ object Userback {
     private val webViews = Collections.newSetFromMap(WeakHashMap<WebView, Boolean>())
     private var weakActivity: WeakReference<Activity>? = null
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
+    private var registryLauncher: ActivityResultLauncher<Intent>? = null
     private var fileChooserLauncher: ActivityResultLauncher<Intent>? = null
     private const val FILE_CHOOSER_REQUEST = 0x7B01
 
@@ -136,11 +110,19 @@ object Userback {
         // Automatically attach WebView overlay after Activity layout is ready
         (context as? Activity)?.let { activity ->
             weakActivity = WeakReference(activity)
-            (activity as? FragmentActivity)?.supportFragmentManager?.let { fm ->
-                if (fm.findFragmentByTag(UserbackFilePickerFragment.TAG) == null) {
-                    fm.beginTransaction()
-                        .add(UserbackFilePickerFragment(), UserbackFilePickerFragment.TAG)
-                        .commitNowAllowingStateLoss()
+            (activity as? ComponentActivity)?.let { componentActivity ->
+                registryLauncher = componentActivity.activityResultRegistry.register(
+                    "userback_file_picker",
+                    componentActivity,
+                    ActivityResultContracts.StartActivityForResult()
+                ) { result ->
+                    val cb = filePathCallback ?: return@register
+                    filePathCallback = null
+                    cb.onReceiveValue(
+                        if (result.resultCode == Activity.RESULT_OK)
+                            WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+                        else null
+                    )
                 }
             }
             val webView = makeWebView(activity)
@@ -738,23 +720,14 @@ object Userback {
                     return false
                 }
                 val activity = weakActivity?.get()
-                // 1. Headless fragment — zero host setup required (AppCompatActivity)
-                val fragment = (activity as? FragmentActivity)
-                    ?.supportFragmentManager
-                    ?.findFragmentByTag(UserbackFilePickerFragment.TAG) as? UserbackFilePickerFragment
-                if (fragment != null) {
-                    fragment.launch(intent, callback)
-                    return true
-                }
-                // 2. Launcher registered by host via registerFileChooser()
-                val launcher = fileChooserLauncher
+                val launcher = registryLauncher ?: fileChooserLauncher
                 if (launcher != null) {
                     filePathCallback?.onReceiveValue(null)
                     filePathCallback = callback
                     launcher.launch(intent)
                     return true
                 }
-                // 3. Last resort — host must forward onActivityResult()
+                // Last resort — host must forward onActivityResult()
                 if (activity != null) {
                     filePathCallback?.onReceiveValue(null)
                     filePathCallback = callback
