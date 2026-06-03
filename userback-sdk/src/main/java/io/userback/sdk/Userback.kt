@@ -20,10 +20,39 @@ import android.widget.FrameLayout
 import androidx.core.net.toUri
 import org.json.JSONObject
 import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentActivity
 import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
 import java.util.Collections
 import java.util.WeakHashMap
+
+internal class UserbackFilePickerFragment : Fragment() {
+    private var pendingCallback: ValueCallback<Array<Uri>>? = null
+
+    private val launcher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val cb = pendingCallback ?: return@registerForActivityResult
+        pendingCallback = null
+        cb.onReceiveValue(
+            if (result.resultCode == Activity.RESULT_OK)
+                WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+            else null
+        )
+    }
+
+    fun launch(intent: Intent, callback: ValueCallback<Array<Uri>>) {
+        pendingCallback?.onReceiveValue(null)
+        pendingCallback = callback
+        launcher.launch(intent)
+    }
+
+    companion object {
+        const val TAG = "UserbackFilePicker"
+    }
+}
 
 object Userback {
     private var appContext: Context? = null
@@ -107,6 +136,13 @@ object Userback {
         // Automatically attach WebView overlay after Activity layout is ready
         (context as? Activity)?.let { activity ->
             weakActivity = WeakReference(activity)
+            (activity as? FragmentActivity)?.supportFragmentManager?.let { fm ->
+                if (fm.findFragmentByTag(UserbackFilePickerFragment.TAG) == null) {
+                    fm.beginTransaction()
+                        .add(UserbackFilePickerFragment(), UserbackFilePickerFragment.TAG)
+                        .commitNowAllowingStateLoss()
+                }
+            }
             val webView = makeWebView(activity)
             val lp = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -692,13 +728,6 @@ object Userback {
                 callback: ValueCallback<Array<Uri>>,
                 params: FileChooserParams?
             ): Boolean {
-                filePathCallback?.onReceiveValue(null)
-                filePathCallback = callback
-                val activity = weakActivity?.get() ?: run {
-                    callback.onReceiveValue(null)
-                    filePathCallback = null
-                    return false
-                }
                 val intent = try {
                     Intent.createChooser(
                         params?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply { type = "*/*" },
@@ -706,17 +735,35 @@ object Userback {
                     )
                 } catch (_: Exception) {
                     callback.onReceiveValue(null)
-                    filePathCallback = null
                     return false
                 }
+                val activity = weakActivity?.get()
+                // 1. Headless fragment — zero host setup required (AppCompatActivity)
+                val fragment = (activity as? FragmentActivity)
+                    ?.supportFragmentManager
+                    ?.findFragmentByTag(UserbackFilePickerFragment.TAG) as? UserbackFilePickerFragment
+                if (fragment != null) {
+                    fragment.launch(intent, callback)
+                    return true
+                }
+                // 2. Launcher registered by host via registerFileChooser()
                 val launcher = fileChooserLauncher
                 if (launcher != null) {
+                    filePathCallback?.onReceiveValue(null)
+                    filePathCallback = callback
                     launcher.launch(intent)
-                } else {
+                    return true
+                }
+                // 3. Last resort — host must forward onActivityResult()
+                if (activity != null) {
+                    filePathCallback?.onReceiveValue(null)
+                    filePathCallback = callback
                     @Suppress("DEPRECATION")
                     activity.startActivityForResult(intent, FILE_CHOOSER_REQUEST)
+                    return true
                 }
-                return true
+                callback.onReceiveValue(null)
+                return false
             }
         }
         webView.loadDataWithBaseURL("https://static.userback.io", INITIAL_HTML.trimIndent(), "text/html", "utf-8", "https://static.userback.io")
