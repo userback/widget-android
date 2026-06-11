@@ -44,7 +44,7 @@ class MainActivity : AppCompatActivity() {
             context = this,
             accessToken = BuildConfig.USERBACK_TOKEN,
             userData = mapOf(
-                "id" to "android-sample-user-001",
+                "id" to "android-sample-user-002",
                 "info" to mapOf(
                     "name" to "Demo User",
                     "email" to "demo.user@example.com"
@@ -54,7 +54,7 @@ class MainActivity : AppCompatActivity() {
             surveyURL = "${BuildConfig.USERBACK_BASE_URL}/s",
             requestURL = BuildConfig.USERBACK_API_URL,
             trackURL = BuildConfig.USERBACK_EVENTS_URL,
-            scriptURL = "${BuildConfig.USERBACK_BASE_URL}/dist/widget_dev/widget.min.js"
+            scriptURL = "${BuildConfig.USERBACK_BASE_URL}/dist/widget_dev/widget.min.js?12412134"
         )
 
         // 2. Setup UI
@@ -200,7 +200,7 @@ class MainActivity : AppCompatActivity() {
             addView(Button(this@MainActivity).apply {
                 text = "Checkout Feedback"
                 setOnClickListener {
-                    Userback.openForm(mode = "general")
+                    Userback.openForm("P-BtAPoz92DjB0IoDPk0M4OoLQQ", mode = "general")
                 }
             })
         }
@@ -253,17 +253,17 @@ class MainActivity : AppCompatActivity() {
             }
 
             addSectionTitle("SUPPORT")
-            fun addSupportBtn(label: String, mode: String) {
+            fun addSupportBtn(projectKey: String, label: String, mode: String) {
                 container.addView(Button(this@MainActivity).apply {
                     text = label
                     isAllCaps = false
                     gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                    setOnClickListener { Userback.openForm(mode = mode) }
+                    setOnClickListener { Userback.openForm("P-BtAPoz92DjB0IoDPk0M4OoLQQ", mode = mode) }
                 })
             }
-            addSupportBtn("Send Feedback", "general")
-            addSupportBtn("Report a Bug", "bug")
-            addSupportBtn("Request a Feature", "feature")
+            addSupportBtn("P-AFxHENZNJLDmezgXBGa0d0iN", "Send Feedback", "general")
+            addSupportBtn("P-7UYiaU5pbNve7ltmqVxdg8kx7", "Report a Bug", "bug")
+            addSupportBtn("P-BtAPoz92DjB0IoDPk0M4OoLQQ", "Request a Feature", "feature")
             container.addView(Button(this@MainActivity).apply {
                 text = "Send Feedback with Screenshot"
                 isAllCaps = false
@@ -340,7 +340,7 @@ class MainActivity : AppCompatActivity() {
 
             addSection("Open / Close")
             addBtn("Open Form (general)") {
-                Userback.openForm(mode = "general")
+                Userback.openForm(projectKey = "P-AFxHENZNJLDmezgXBGa0d0iN", mode = "general")
                 updateStatus("Called openForm(general)")
             }
             addBtn("Open Portal") {
@@ -428,15 +428,41 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, status, Toast.LENGTH_SHORT).show()
     }
 
+    private val screenNames = mapOf(
+        "home"     to "HomeScreen",
+        "shop"     to "ShopScreen",
+        "profile"  to "ProfileScreen",
+        "endpoint" to "EndpointTesterScreen",
+    )
+
     private fun showScreen(screen: View) {
+        val leaving = when (currentScreen) {
+            homeScreen          -> screenNames["home"]
+            shopScreen          -> screenNames["shop"]
+            profileScreen       -> screenNames["profile"]
+            endpointTesterScreen -> screenNames["endpoint"]
+            else                -> null
+        }
+        val entering = when (screen) {
+            homeScreen          -> screenNames["home"]
+            shopScreen          -> screenNames["shop"]
+            profileScreen       -> screenNames["profile"]
+            endpointTesterScreen -> screenNames["endpoint"]
+            else                -> null
+        }
+
+        leaving?.let { Userback.leaveScreen(it) }
+
         homeScreen.visibility = View.GONE
         shopScreen.visibility = View.GONE
         profileScreen.visibility = View.GONE
         endpointTesterScreen.visibility = View.GONE
-        
+
         screen.visibility = View.VISIBLE
         currentScreen = screen
-        
+
+        entering?.let { Userback.enterScreen(it) }
+
         // Hide bottom menu if we are in the Endpoint Tester
         bottomMenuContainer.visibility = if (screen == endpointTesterScreen) View.GONE else View.VISIBLE
     }
