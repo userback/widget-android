@@ -249,7 +249,7 @@ object Userback {
         currentSurveyInfo = null
     }
 
-    fun openForm(projectKey: String, mode: String = "general", directTo: String? = null) {
+    fun openForm(projectKey: String = "", mode: String = "general", directTo: String? = null) {
         Log.d("Userback", "openForm called (Mode: $mode).")
         pendingScreenshotOnFormOpen = directTo?.lowercase() == "screenshot"
         // Capture screenshot BEFORE making the WebView visible so there is no flicker.
@@ -665,7 +665,11 @@ object Userback {
             if (cfg.hasOverlay) {
                 lp.width = ViewGroup.LayoutParams.MATCH_PARENT
                 lp.height = ViewGroup.LayoutParams.MATCH_PARENT
-                lp.gravity = android.view.Gravity.CENTER
+                lp.gravity = android.view.Gravity.NO_GRAVITY
+                lp.leftMargin = 0
+                lp.topMargin = 0
+                lp.rightMargin = 0
+                lp.bottomMargin = 0
             } else {
                 val rawWidthDp = surveySizeWidths[cfg.size] ?: 640f
                 val widthDp = minOf(rawWidthDp, screenWidthDp - SURVEY_SPACE * 2)
