@@ -258,17 +258,25 @@ class MainActivity : AppCompatActivity() {
                     text = label
                     isAllCaps = false
                     gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                    setOnClickListener { Userback.openForm("P-BtAPoz92DjB0IoDPk0M4OoLQQ", mode = mode) }
+                    setOnClickListener { Userback.openForm(projectKey = projectKey, mode = mode) }
                 })
             }
-            addSupportBtn("P-AFxHENZNJLDmezgXBGa0d0iN", "Send Feedback", "general")
-            addSupportBtn("P-7UYiaU5pbNve7ltmqVxdg8kx7", "Report a Bug", "bug")
-            addSupportBtn("P-BtAPoz92DjB0IoDPk0M4OoLQQ", "Request a Feature", "feature")
+            addSupportBtn("FR", "Send Feedback", "bug")
+            addSupportBtn("VF", "Report a Bug", "bug")
+            addSupportBtn("PROJ2", "Request a Feature", "bug")
             container.addView(Button(this@MainActivity).apply {
                 text = "Send Feedback with Screenshot"
                 isAllCaps = false
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
                 setOnClickListener { Userback.openForm(mode = "general", directTo = "screenshot") }
+            })
+
+            addSectionTitle("SINGLE PROJECT")
+            container.addView(Button(this@MainActivity).apply {
+                text = "Open Feedback (no key)"
+                isAllCaps = false
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                setOnClickListener { Userback.openForm() }
             })
 
             addSectionTitle("SDK ENDPOINT TESTS")
