@@ -44,7 +44,7 @@ class MainActivity : AppCompatActivity() {
             context = this,
             accessToken = BuildConfig.USERBACK_TOKEN,
             userData = mapOf(
-                "id" to "android-sample-user-002",
+                "id" to "android-sample-user-001",
                 "info" to mapOf(
                     "name" to "Demo User",
                     "email" to "demo.user@example.com"
@@ -54,7 +54,7 @@ class MainActivity : AppCompatActivity() {
             surveyURL = "${BuildConfig.USERBACK_BASE_URL}/s",
             requestURL = BuildConfig.USERBACK_API_URL,
             trackURL = BuildConfig.USERBACK_EVENTS_URL,
-            scriptURL = "${BuildConfig.USERBACK_BASE_URL}/dist/widget_dev/widget.min.js?12412134"
+            scriptURL = "${BuildConfig.USERBACK_BASE_URL}/dist/widget_dev/widget.min.js"
         )
 
         // 2. Setup UI
