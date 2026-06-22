@@ -200,7 +200,7 @@ class MainActivity : AppCompatActivity() {
             addView(Button(this@MainActivity).apply {
                 text = "Checkout Feedback"
                 setOnClickListener {
-                    Userback.openForm("P-BtAPoz92DjB0IoDPk0M4OoLQQ", mode = "general")
+                    Userback.openForm("", mode = "general")
                 }
             })
         }
@@ -261,9 +261,9 @@ class MainActivity : AppCompatActivity() {
                     setOnClickListener { Userback.openForm(projectKey = projectKey, mode = mode) }
                 })
             }
-            addSupportBtn("FR", "Send Feedback", "bug")
-            addSupportBtn("VF", "Report a Bug", "bug")
-            addSupportBtn("PROJ2", "Request a Feature", "bug")
+            addSupportBtn("Your project key A", "Send Feedback", "bug")
+            addSupportBtn("Your project key B", "Report a Bug", "bug")
+            addSupportBtn("Your project key C", "Request a Feature", "bug")
             container.addView(Button(this@MainActivity).apply {
                 text = "Send Feedback with Screenshot"
                 isAllCaps = false
@@ -348,7 +348,7 @@ class MainActivity : AppCompatActivity() {
 
             addSection("Open / Close")
             addBtn("Open Form (general)") {
-                Userback.openForm(projectKey = "P-AFxHENZNJLDmezgXBGa0d0iN", mode = "general")
+                Userback.openForm("", mode = "general")
                 updateStatus("Called openForm(general)")
             }
             addBtn("Open Portal") {
@@ -405,6 +405,10 @@ class MainActivity : AppCompatActivity() {
             addBtn("Add Custom Event") {
                 Userback.addCustomEvent(title = "android_test_event", details = mapOf("source" to "endpoint_tester"))
                 updateStatus("Called addCustomEvent()")
+            }
+            addBtn("Add Custom Event (test)") {
+                Userback.addCustomEvent(title = "test", details = mapOf("a" to 1, "b" to 2))
+                updateStatus("Called addCustomEvent(test)")
             }
 
             addSection("Native Logging")
