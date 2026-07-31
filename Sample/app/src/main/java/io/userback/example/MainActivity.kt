@@ -264,6 +264,12 @@ class MainActivity : AppCompatActivity() {
             addSupportBtn("Send Feedback", "general")
             addSupportBtn("Report a Bug", "bug")
             addSupportBtn("Request a Feature", "feature")
+            container.addView(Button(this@MainActivity).apply {
+                text = "Send Feedback with Screenshot"
+                isAllCaps = false
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                setOnClickListener { Userback.openForm(mode = "general", directTo = "screenshot") }
+            })
 
             addSectionTitle("SDK ENDPOINT TESTS")
             container.addView(Button(this@MainActivity).apply {
