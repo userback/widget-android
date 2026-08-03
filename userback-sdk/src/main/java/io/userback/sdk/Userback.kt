@@ -264,7 +264,10 @@ object Userback {
                 }
             }
         }
-        callUserback("openForm", mode, directTo)
+        // Don't pass 'screenshot' to the widget — native handles the screenshot via
+        // captureAndSendScreenshot on widget_resize, so the form opens directly.
+        val widgetDirectTo = if (directTo?.lowercase() == "screenshot") null else directTo
+        callUserback("openForm", mode, widgetDirectTo)
     }
 
     fun openPortal() {
