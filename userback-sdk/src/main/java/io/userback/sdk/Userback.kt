@@ -56,6 +56,7 @@ object Userback {
     private var isLogCaptureStarted = false
     private var isWidgetInjected = false
     private var cachedScreenshotDataUrl: String? = null
+    private var pendingScreenshotOnFormOpen = false
 
     private const val INITIAL_HTML = """
             <html>
@@ -228,6 +229,7 @@ object Userback {
 
     fun openForm(mode: String = "general", directTo: String? = null) {
         Log.d("Userback", "openForm called (Mode: $mode).")
+        pendingScreenshotOnFormOpen = directTo?.lowercase() == "screenshot"
         // Capture screenshot BEFORE making the WebView visible so there is no flicker.
         webViews.firstOrNull()?.let { webView ->
             webView.post {
@@ -262,7 +264,10 @@ object Userback {
                 }
             }
         }
-        callUserback("openForm", mode, directTo)
+        // Don't pass 'screenshot' to the widget — native handles the screenshot via
+        // captureAndSendScreenshot on widget_resize, so the form opens directly.
+        val widgetDirectTo = if (directTo?.lowercase() == "screenshot") null else directTo
+        callUserback("openForm", mode, widgetDirectTo)
     }
 
     fun openPortal() {
@@ -656,6 +661,10 @@ object Userback {
                                 applyBreakpoint()
                                 if (last) {
                                     webViews.forEach { it.post { it.visibility = View.VISIBLE } }
+                                    if (pendingScreenshotOnFormOpen) {
+                                        pendingScreenshotOnFormOpen = false
+                                        captureAndSendScreenshot()
+                                    }
                                 }
                             }
                         }
