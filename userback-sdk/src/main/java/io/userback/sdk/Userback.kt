@@ -55,8 +55,28 @@ object Userback {
     private val formOpenHandler = Handler(Looper.getMainLooper())
     private var isLogCaptureStarted = false
     private var isWidgetInjected = false
+    private var isWidgetOpen = false
     private var cachedScreenshotDataUrl: String? = null
     private var pendingScreenshotOnFormOpen = false
+
+    private data class SurveyLayoutConfig(
+        val format: String,
+        val position: String,
+        val size: String,
+        val hasOverlay: Boolean
+    )
+    private data class CurrentSurveyInfo(val config: SurveyLayoutConfig, var height: Float)
+    private val surveyConfigs = mutableMapOf<String, SurveyLayoutConfig>()
+    private var currentSurveyInfo: CurrentSurveyInfo? = null
+    private val surveySizeWidths = mapOf(
+        "smaller" to 352f, "smaller-wide" to 448f,
+        "small"   to 448f, "small-wide"   to 544f,
+        "medium"  to 544f, "medium-wide"  to 640f,
+        "large"   to 640f, "large-wide"   to 736f,
+        "larger"  to 736f, "larger-wide"  to 832f,
+        "largest" to 1120f
+    )
+    private const val SURVEY_SPACE = 24f
 
     private const val INITIAL_HTML = """
             <html>
@@ -225,9 +245,11 @@ object Userback {
         latestWidgetHeight = 0
         isWidgetInjected = false
         cachedScreenshotDataUrl = null
+        surveyConfigs.clear()
+        currentSurveyInfo = null
     }
 
-    fun openForm(mode: String = "general", directTo: String? = null) {
+    fun openForm(mode: String = "general", directTo: String? = null, projectKey: String = "") {
         Log.d("Userback", "openForm called (Mode: $mode).")
         pendingScreenshotOnFormOpen = directTo?.lowercase() == "screenshot"
         // Capture screenshot BEFORE making the WebView visible so there is no flicker.
@@ -267,7 +289,7 @@ object Userback {
         // Don't pass 'screenshot' to the widget — native handles the screenshot via
         // captureAndSendScreenshot on widget_resize, so the form opens directly.
         val widgetDirectTo = if (directTo?.lowercase() == "screenshot") null else directTo
-        callUserback("openForm", mode, widgetDirectTo)
+        callUserback("openForm", mode, widgetDirectTo, projectKey)
     }
 
     fun openPortal() {
@@ -288,6 +310,26 @@ object Userback {
         } else {
             callUserback("openPortal", "roadmap")
         }
+    }
+
+    fun openSurvey(surveyKey: String) { callUserback("openSurvey", surveyKey) }
+
+    fun enterScreen(screenName: String) {
+        val detail = JSONObject().apply {
+            put("screenName", screenName)
+            put("action", "enter")
+        }
+        val js = "(function(){window.dispatchEvent(new CustomEvent('userback:nativeScreen',{detail:${detail}}));})();"
+        webViews.forEach { it.post { it.evaluateJavascript(js, null) } }
+    }
+
+    fun leaveScreen(screenName: String) {
+        val detail = JSONObject().apply {
+            put("screenName", screenName)
+            put("action", "leave")
+        }
+        val js = "(function(){window.dispatchEvent(new CustomEvent('userback:nativeScreen',{detail:${detail}}));})();"
+        webViews.forEach { it.post { it.evaluateJavascript(js, null) } }
     }
 
     fun openAnnouncement() {
@@ -324,7 +366,10 @@ object Userback {
     fun addHeader(key: String, value: String) { callUserback("addHeader", key, value) }
 
     fun close() {
+        Log.d("Userback", "close() called → isWidgetOpen=false", Exception("stack"))
         callUserback("close")
+        isWidgetOpen = false
+        currentSurveyInfo = null
         webViews.forEach { it.post { it.visibility = View.INVISIBLE } }
     }
 
@@ -599,6 +644,65 @@ object Userback {
         }
     }
 
+    private fun applyCurrentSurveyLayout() {
+        val info = currentSurveyInfo ?: return
+        val webView = webViews.firstOrNull() ?: return
+        webView.post {
+            val density = webView.resources.displayMetrics.density
+            val screenWidthPx = webView.resources.displayMetrics.widthPixels
+            val screenHeightPx = webView.resources.displayMetrics.heightPixels
+            val screenWidthDp = screenWidthPx / density
+            val screenHeightDp = screenHeightPx / density
+            val cfg = info.config
+            val heightDp = if (info.height > 0f) info.height else screenHeightDp
+
+            val lp = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+
+            if (cfg.hasOverlay) {
+                lp.width = ViewGroup.LayoutParams.MATCH_PARENT
+                lp.height = ViewGroup.LayoutParams.MATCH_PARENT
+                lp.gravity = android.view.Gravity.NO_GRAVITY
+                lp.leftMargin = 0
+                lp.topMargin = 0
+                lp.rightMargin = 0
+                lp.bottomMargin = 0
+            } else {
+                val rawWidthDp = surveySizeWidths[cfg.size] ?: 640f
+                val widthDp = minOf(rawWidthDp, screenWidthDp - SURVEY_SPACE * 2)
+                val widthPx = (widthDp * density).toInt()
+                val spacePx = (SURVEY_SPACE * density).toInt()
+
+                lp.width = widthPx
+
+                if (cfg.format == "pageless") {
+                    lp.height = ViewGroup.LayoutParams.MATCH_PARENT
+                    lp.gravity = android.view.Gravity.TOP or android.view.Gravity.START
+                    lp.leftMargin = ((screenWidthPx - widthPx) / 2)
+                } else {
+                    lp.height = (heightDp * density).toInt()
+                    when (cfg.position) {
+                        "top" -> { lp.gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL; lp.topMargin = spacePx }
+                        "top_left" -> { lp.gravity = android.view.Gravity.TOP or android.view.Gravity.START; lp.topMargin = spacePx; lp.leftMargin = spacePx }
+                        "top_right" -> { lp.gravity = android.view.Gravity.TOP or android.view.Gravity.END; lp.topMargin = spacePx; lp.rightMargin = spacePx }
+                        "bottom" -> { lp.gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL; lp.bottomMargin = spacePx }
+                        "bottom_left" -> { lp.gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START; lp.bottomMargin = spacePx; lp.leftMargin = spacePx }
+                        "bottom_right" -> { lp.gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END; lp.bottomMargin = spacePx; lp.rightMargin = spacePx }
+                        "left" -> { lp.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START; lp.leftMargin = spacePx }
+                        "right" -> { lp.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.END; lp.rightMargin = spacePx }
+                        else -> { lp.gravity = android.view.Gravity.CENTER } // center
+                    }
+                }
+            }
+
+            webView.layoutParams = lp
+            webView.bringToFront()
+            webView.visibility = View.VISIBLE
+        }
+    }
+
     private class UserbackJsBridge {
         @JavascriptInterface
         fun postMessage(payload: String) {
@@ -660,6 +764,8 @@ object Userback {
                                 resizeWebView(w, h)
                                 applyBreakpoint()
                                 if (last) {
+                                    Log.d("Userback", "widget_resize last=true → isWidgetOpen=true")
+                                    isWidgetOpen = true
                                     webViews.forEach { it.post { it.visibility = View.VISIBLE } }
                                     if (pendingScreenshotOnFormOpen) {
                                         pendingScreenshotOnFormOpen = false
@@ -667,6 +773,44 @@ object Userback {
                                     }
                                 }
                             }
+                        }
+                    }
+                    "survey_configs" -> {
+                        val configs = body.optJSONArray("payload")
+                        if (configs != null) {
+                            surveyConfigs.clear()
+                            for (i in 0 until configs.length()) {
+                                val cfg = configs.optJSONObject(i) ?: continue
+                                val key = cfg.optString("key").takeIf { it.isNotEmpty() } ?: continue
+                                surveyConfigs[key] = SurveyLayoutConfig(
+                                    format     = cfg.optString("format", ""),
+                                    position   = cfg.optString("position", "center"),
+                                    size       = cfg.optString("size", "large"),
+                                    hasOverlay = cfg.optBoolean("has_background_colour", false)
+                                )
+                            }
+                        }
+                    }
+                    "survey_open" -> {
+                        Log.d("Userback", "survey_open received, isWidgetOpen=$isWidgetOpen")
+                        if (!isWidgetOpen) {
+                            val p = body.optJSONObject("payload")
+                            val key = p?.optString("key") ?: ""
+                            val cfg = surveyConfigs[key] ?: SurveyLayoutConfig("", "center", "large", false)
+                            currentSurveyInfo = CurrentSurveyInfo(cfg, 0f)
+                            applyCurrentSurveyLayout()
+                        }
+                    }
+                    "survey_close" -> {
+                        currentSurveyInfo = null
+                        webViews.forEach { it.post { it.visibility = View.INVISIBLE } }
+                    }
+                    "survey_height" -> {
+                        val p = body.optJSONObject("payload")
+                        val h = p?.optDouble("height", 0.0)?.toFloat() ?: 0f
+                        if (h > 0f) {
+                            currentSurveyInfo?.height = h + 40f
+                            applyCurrentSurveyLayout()
                         }
                     }
                     "load_error" -> close()

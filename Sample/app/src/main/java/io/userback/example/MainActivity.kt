@@ -253,22 +253,30 @@ class MainActivity : AppCompatActivity() {
             }
 
             addSectionTitle("SUPPORT")
-            fun addSupportBtn(label: String, mode: String) {
+            fun addSupportBtn(projectKey: String, label: String, mode: String) {
                 container.addView(Button(this@MainActivity).apply {
                     text = label
                     isAllCaps = false
                     gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                    setOnClickListener { Userback.openForm(mode = mode) }
+                    setOnClickListener { Userback.openForm(mode = mode, projectKey = projectKey) }
                 })
             }
-            addSupportBtn("Send Feedback", "general")
-            addSupportBtn("Report a Bug", "bug")
-            addSupportBtn("Request a Feature", "feature")
+            addSupportBtn("Your project key A", "Send Feedback", "bug")
+            addSupportBtn("Your project key B", "Report a Bug", "bug")
+            addSupportBtn("Your project key C", "Request a Feature", "bug")
             container.addView(Button(this@MainActivity).apply {
                 text = "Send Feedback with Screenshot"
                 isAllCaps = false
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
                 setOnClickListener { Userback.openForm(mode = "general", directTo = "screenshot") }
+            })
+
+            addSectionTitle("SINGLE PROJECT")
+            container.addView(Button(this@MainActivity).apply {
+                text = "Open Feedback (no key)"
+                isAllCaps = false
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                setOnClickListener { Userback.openForm() }
             })
 
             addSectionTitle("SDK ENDPOINT TESTS")
@@ -398,6 +406,10 @@ class MainActivity : AppCompatActivity() {
                 Userback.addCustomEvent(title = "android_test_event", details = mapOf("source" to "endpoint_tester"))
                 updateStatus("Called addCustomEvent()")
             }
+            addBtn("Add Custom Event (test)") {
+                Userback.addCustomEvent(title = "test", details = mapOf("a" to 1, "b" to 2))
+                updateStatus("Called addCustomEvent(test)")
+            }
 
             addSection("Native Logging")
             addBtn("Emit Test Console Log") {
@@ -428,15 +440,41 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, status, Toast.LENGTH_SHORT).show()
     }
 
+    private val screenNames = mapOf(
+        "home"     to "HomeScreen",
+        "shop"     to "ShopScreen",
+        "profile"  to "ProfileScreen",
+        "endpoint" to "EndpointTesterScreen",
+    )
+
     private fun showScreen(screen: View) {
+        val leaving = when (currentScreen) {
+            homeScreen          -> screenNames["home"]
+            shopScreen          -> screenNames["shop"]
+            profileScreen       -> screenNames["profile"]
+            endpointTesterScreen -> screenNames["endpoint"]
+            else                -> null
+        }
+        val entering = when (screen) {
+            homeScreen          -> screenNames["home"]
+            shopScreen          -> screenNames["shop"]
+            profileScreen       -> screenNames["profile"]
+            endpointTesterScreen -> screenNames["endpoint"]
+            else                -> null
+        }
+
+        leaving?.let { Userback.leaveScreen(it) }
+
         homeScreen.visibility = View.GONE
         shopScreen.visibility = View.GONE
         profileScreen.visibility = View.GONE
         endpointTesterScreen.visibility = View.GONE
-        
+
         screen.visibility = View.VISIBLE
         currentScreen = screen
-        
+
+        entering?.let { Userback.enterScreen(it) }
+
         // Hide bottom menu if we are in the Endpoint Tester
         bottomMenuContainer.visibility = if (screen == endpointTesterScreen) View.GONE else View.VISIBLE
     }
