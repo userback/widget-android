@@ -200,7 +200,7 @@ class MainActivity : AppCompatActivity() {
             addView(Button(this@MainActivity).apply {
                 text = "Checkout Feedback"
                 setOnClickListener {
-                    Userback.openForm("", mode = "general")
+                    Userback.openForm(mode = "general")
                 }
             })
         }
@@ -258,7 +258,7 @@ class MainActivity : AppCompatActivity() {
                     text = label
                     isAllCaps = false
                     gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                    setOnClickListener { Userback.openForm(projectKey = projectKey, mode = mode) }
+                    setOnClickListener { Userback.openForm(mode = mode, projectKey = projectKey) }
                 })
             }
             addSupportBtn("Your project key A", "Send Feedback", "bug")
@@ -348,7 +348,7 @@ class MainActivity : AppCompatActivity() {
 
             addSection("Open / Close")
             addBtn("Open Form (general)") {
-                Userback.openForm("", mode = "general")
+                Userback.openForm(mode = "general")
                 updateStatus("Called openForm(general)")
             }
             addBtn("Open Portal") {
