@@ -5,6 +5,22 @@ The Userback Android SDK allows you to integrate the Userback feedback widget in
 - **Minimum SDK:** API 21 (Android 5.0)
 - **Language:** Kotlin
 
+## What's new in v2
+
+- **Multi-project support** — `openForm` accepts an optional `projectKey` to route feedback to a specific Userback project when your app is set up with more than one.
+
+This is additive. Existing v1 `openForm(mode, directTo)` calls keep working unchanged — no code changes required to upgrade.
+
+### Upgrading from v1
+
+```kotlin
+dependencies {
+    implementation("com.github.userback:widget-android:2.0.0")
+}
+```
+
+If you're still passing a general web widget access token (`P-...`) as `accessToken`, switch to your app's **Mobile Key** instead — find it in the Userback app under **Workspace Settings → Mobile SDK**. The Mobile Key is required for multi-project routing.
+
 ---
 
 ## Installation
@@ -47,7 +63,7 @@ Add internet permission and `configChanges` to your `AndroidManifest.xml`:
 
 ### Step 4
 
-Initialize Userback in your `Activity.onCreate()`:
+Initialize Userback in your `Activity.onCreate()`. Use your app's **Mobile Key** — found in the Userback app under **Workspace Settings → Mobile SDK** — not a general web widget access token (`P-...`):
 
 ```kotlin
 import io.userback.sdk.Userback
@@ -57,7 +73,7 @@ override fun onCreate(savedInstanceState: Bundle?) {
 
     Userback.init(
         context = this,
-        accessToken = "YOUR_ACCESS_TOKEN",
+        accessToken = "YOUR_MOBILE_KEY",
         userData = mapOf(
             "id" to "user-123",
             "info" to mapOf(
@@ -79,6 +95,12 @@ override fun onCreate(savedInstanceState: Bundle?) {
 Userback.openForm()                        // default (general)
 Userback.openForm(mode = "bug")
 Userback.openForm(mode = "feature")
+
+// Open and navigate directly to a target
+Userback.openForm(mode = "general", directTo = "screenshot")
+
+// Route to a specific project, if your app has more than one set up
+Userback.openForm(mode = "general", projectKey = "YOUR_PROJECT_KEY")
 ```
 
 ### Open portal / roadmap / announcements
@@ -144,8 +166,8 @@ val client = OkHttpClient.Builder()
 A working example is in the [`Sample/`](Sample/) directory. To run it:
 
 1. Open the project in Android Studio.
-2. Set your access token in `local.properties`:
+2. Set your Mobile Key in `local.properties`:
    ```
-   USERBACK_TOKEN=YOUR_ACCESS_TOKEN
+   USERBACK_TOKEN=YOUR_MOBILE_KEY
    ```
 3. Run the `Sample.app` configuration on a device or emulator.

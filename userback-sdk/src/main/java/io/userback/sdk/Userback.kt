@@ -249,7 +249,7 @@ object Userback {
         currentSurveyInfo = null
     }
 
-    fun openForm(projectKey: String = "", mode: String = "general", directTo: String? = null) {
+    fun openForm(mode: String = "general", directTo: String? = null, projectKey: String = "") {
         Log.d("Userback", "openForm called (Mode: $mode).")
         pendingScreenshotOnFormOpen = directTo?.lowercase() == "screenshot"
         // Capture screenshot BEFORE making the WebView visible so there is no flicker.
@@ -289,8 +289,7 @@ object Userback {
         // Don't pass 'screenshot' to the widget — native handles the screenshot via
         // captureAndSendScreenshot on widget_resize, so the form opens directly.
         val widgetDirectTo = if (directTo?.lowercase() == "screenshot") null else directTo
-        callUserback("setActiveWidget", projectKey)
-        callUserback("openForm", mode, widgetDirectTo)
+        callUserback("openForm", mode, widgetDirectTo, projectKey)
     }
 
     fun openPortal() {
