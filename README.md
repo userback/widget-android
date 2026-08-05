@@ -7,9 +7,11 @@ The Userback Android SDK allows you to integrate the Userback feedback widget in
 
 ## What's new in v2
 
+- **Surveys** — `openSurvey(surveyKey)` opens a specific survey directly.
+- **Screen tracking** — `enterScreen`/`leaveScreen` attribute surveys to the screen the user was on.
 - **Multi-project support** — `openForm` accepts an optional `projectKey` to route feedback to a specific Userback project when your app is set up with more than one.
 
-This is additive. Existing v1 `openForm(mode, directTo)` calls keep working unchanged — no code changes required to upgrade.
+All of the above are additive. Existing v1 `openForm(mode, directTo)` calls keep working unchanged — no code changes required to upgrade.
 
 ### Upgrading from v1
 
@@ -19,7 +21,7 @@ dependencies {
 }
 ```
 
-If you're still passing a general web widget access token (`P-...`) as `accessToken`, switch to your app's **Mobile Key** instead — find it in the Userback app under **Workspace Settings → Mobile SDK**. The Mobile Key is required for multi-project routing.
+If you're still passing a general web widget access token (`P-...`) as `accessToken`, switch to your app's **Mobile Key** instead — find it in the Userback app under **Workspace Settings → Mobile SDK**. The Mobile Key is required for screen tracking, native events, and multi-project routing.
 
 ---
 
@@ -45,7 +47,7 @@ Add the dependency to your app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.userback:widget-android:1.0.0")
+    implementation("com.github.userback:widget-android:2.0.0")
 }
 ```
 
@@ -101,6 +103,23 @@ Userback.openForm(mode = "general", directTo = "screenshot")
 
 // Route to a specific project, if your app has more than one set up
 Userback.openForm(mode = "general", projectKey = "YOUR_PROJECT_KEY")
+```
+
+### Open a survey
+
+```kotlin
+Userback.openSurvey("YOUR_SURVEY_KEY")
+```
+
+Find a survey's key in the Userback app under that survey's settings.
+
+### Screen tracking
+
+Call `enterScreen` when a screen becomes active and `leaveScreen` when it's dismissed, so surveys can be attributed to the correct screen:
+
+```kotlin
+Userback.enterScreen("ProductDetailScreen")
+Userback.leaveScreen("ProductDetailScreen")
 ```
 
 ### Open portal / roadmap / announcements
