@@ -36,7 +36,7 @@ object Userback {
     private var requestURL: String? = null
     private var trackURL: String? = null
     private var scriptURL: String? = null
-    const val SDK_VERSION = "2.0.0"
+    const val SDK_VERSION = "2.0.1"
     private const val DEFAULT_JS = "https://static.userback.io/widget/v1.js"
 
     private var isRecording: Boolean = false

@@ -17,7 +17,7 @@ All of the above are additive. Existing v1 `openForm(mode, directTo)` calls keep
 
 ```kotlin
 dependencies {
-    implementation("com.github.userback:widget-android:2.0.0")
+    implementation("com.github.userback:widget-android:2.0.1")
 }
 ```
 
@@ -47,7 +47,7 @@ Add the dependency to your app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.userback:widget-android:2.0.0")
+    implementation("com.github.userback:widget-android:2.0.1")
 }
 ```
 
