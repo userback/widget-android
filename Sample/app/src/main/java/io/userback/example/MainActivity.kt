@@ -1,5 +1,6 @@
 package io.userback.example
 
+import android.app.Dialog
 import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
@@ -9,7 +10,10 @@ import android.view.ViewGroup
 import android.widget.*
 import android.content.Intent
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.fragment.app.DialogFragment
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import io.userback.sdk.Userback
 import android.webkit.WebView
 import okhttp3.*
@@ -179,9 +183,148 @@ class MainActivity : AppCompatActivity() {
             addHomeCard("Special Offers")
             addHomeCard("News")
 
+            fun addModalButton(title: String, onClick: () -> Unit) {
+                container.addView(Button(this@MainActivity).apply {
+                    text = title
+                    isAllCaps = false
+                    setPadding(32, 32, 32, 32)
+                    setBackgroundColor(Color.parseColor("#F9F9F9"))
+                    setTextColor(Color.BLACK)
+                    val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    lp.setMargins(0, 0, 0, 24)
+                    layoutParams = lp
+                    setOnClickListener { onClick() }
+                })
+            }
+
+            addModalButton("Open AlertDialog Modal") { showFeedbackModal() }
+            addModalButton("Open Base Dialog Modal") { showBaseDialogModal() }
+            addModalButton("Open DialogFragment Modal") { showDialogFragmentModal() }
+            addModalButton("Open Bottom Sheet Modal") { showBottomSheetModal() }
+            addModalButton("Open PopupWindow Modal") { showPopupWindowModal(container) }
+            addModalButton("Open Dialog-themed Activity") {
+                startActivity(Intent(this@MainActivity, DialogStyleActivity::class.java))
+            }
+
             addView(container)
         }
         contentFrame.addView(homeScreen)
+    }
+
+    private fun showFeedbackModal() {
+        AlertDialog.Builder(this)
+            .setTitle("We'd love your feedback")
+            .setMessage("This is a native AlertDialog modal. Send feedback with a screenshot of the current screen attached.")
+            .setPositiveButton("Send Feedback with Screenshot") { dialog, _ ->
+                Userback.openForm(mode = "general", directTo = "screenshot")
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
+            .show()
+    }
+
+    private fun modalBody(title: String, description: String): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 48, 48, 48)
+            setBackgroundColor(Color.WHITE)
+
+            addView(TextView(this@MainActivity).apply {
+                text = title
+                textSize = 18f
+                setTextColor(Color.BLACK)
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setPadding(0, 0, 0, 16)
+            })
+
+            addView(TextView(this@MainActivity).apply {
+                text = description
+                textSize = 14f
+                setTextColor(Color.GRAY)
+                setPadding(0, 0, 0, 24)
+            })
+        }
+    }
+
+    // Plain android.app.Dialog — unlike AlertDialog's buttons, it does not auto-dismiss on click,
+    // so we're fully in control of when it tears down.
+    private fun showBaseDialogModal() {
+        val dialog = Dialog(this)
+        val body = modalBody(
+            "Base Dialog Modal",
+            "A plain android.app.Dialog — no auto-dismiss on button tap."
+        )
+        body.addView(Button(this).apply {
+            text = "Send Feedback with Screenshot"
+            isAllCaps = false
+            setOnClickListener {
+                Userback.openForm(mode = "general", directTo = "screenshot")
+                dialog.dismiss()
+            }
+        })
+        dialog.setContentView(body)
+        dialog.show()
+    }
+
+    // DialogFragment — the lifecycle-aware, recommended wrapper around Dialog.
+    private fun showDialogFragmentModal() {
+        ScreenshotDialogFragment().show(supportFragmentManager, "screenshot_dialog_fragment")
+    }
+
+    // Material's modal bottom sheet — still a separate attached Window, same as AlertDialog.
+    private fun showBottomSheetModal() {
+        val bottomSheet = BottomSheetDialog(this)
+        val body = modalBody(
+            "Bottom Sheet Modal",
+            "A Material BottomSheetDialog."
+        )
+        body.addView(Button(this).apply {
+            text = "Send Feedback with Screenshot"
+            isAllCaps = false
+            setOnClickListener {
+                Userback.openForm(mode = "general", directTo = "screenshot")
+                bottomSheet.dismiss()
+            }
+        })
+        bottomSheet.setContentView(body)
+        bottomSheet.show()
+    }
+
+    // PopupWindow — not a true modal (no dimmed background, doesn't block back-press), but still
+    // its own attached window, separate from the Activity's decor view.
+    private fun showPopupWindowModal(anchor: View) {
+        lateinit var popup: PopupWindow
+        val body = modalBody(
+            "PopupWindow Modal",
+            "A PopupWindow — not a true modal (no dimmed background, doesn't block back-press)."
+        )
+        body.elevation = 16f
+        body.addView(Button(this).apply {
+            text = "Send Feedback with Screenshot"
+            isAllCaps = false
+            setOnClickListener {
+                Userback.openForm(mode = "general", directTo = "screenshot")
+                popup.dismiss()
+            }
+        })
+        popup = PopupWindow(body, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
+            isOutsideTouchable = true
+        }
+        popup.showAtLocation(anchor, Gravity.CENTER, 0, 0)
+    }
+
+    class ScreenshotDialogFragment : DialogFragment() {
+        override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
+            return AlertDialog.Builder(requireContext())
+                .setTitle("DialogFragment Modal")
+                .setMessage("This modal is a DialogFragment — the lifecycle-aware, recommended wrapper around Dialog.")
+                .setPositiveButton("Send Feedback with Screenshot") { dialog, _ ->
+                    Userback.openForm(mode = "general", directTo = "screenshot")
+                    dialog.dismiss()
+                }
+                .setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
+                .create()
+        }
     }
 
     private fun createShopView() {
