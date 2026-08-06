@@ -252,18 +252,20 @@ object Userback {
     fun openForm(mode: String = "general", directTo: String? = null, projectKey: String = "") {
         Log.d("Userback", "openForm called (Mode: $mode).")
         pendingScreenshotOnFormOpen = directTo?.lowercase() == "screenshot"
-        // Capture screenshot BEFORE making the WebView visible so there is no flicker.
+        // Capture the screenshot synchronously, in the same call stack as this openForm() call —
+        // not deferred via webView.post{}. openForm() is commonly triggered from a button inside a
+        // native modal that dismisses itself right after (either explicitly, or automatically per
+        // AlertDialog's default button behavior). A deferred capture would run after that dismiss
+        // has already torn down the modal's window, so it would never appear in the screenshot.
         webViews.firstOrNull()?.let { webView ->
+            val bmp = captureFullScreenBitmap(webView.rootView)
+            if (bmp != null) {
+                val out = ByteArrayOutputStream()
+                bmp.compress(Bitmap.CompressFormat.JPEG, 70, out)
+                cachedScreenshotDataUrl = "data:image/jpeg;base64," +
+                    Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+            }
             webView.post {
-                val root = webView.rootView
-                if (root.width > 0 && root.height > 0) {
-                    val bmp = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
-                    root.draw(Canvas(bmp))
-                    val out = ByteArrayOutputStream()
-                    bmp.compress(Bitmap.CompressFormat.JPEG, 70, out)
-                    cachedScreenshotDataUrl = "data:image/jpeg;base64," +
-                        Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-                }
                 val lp = webView.layoutParams as? android.widget.FrameLayout.LayoutParams
                     ?: android.widget.FrameLayout.LayoutParams(
                         android.view.ViewGroup.LayoutParams.MATCH_PARENT,
@@ -290,6 +292,58 @@ object Userback {
         // captureAndSendScreenshot on widget_resize, so the form opens directly.
         val widgetDirectTo = if (directTo?.lowercase() == "screenshot") null else directTo
         callUserback("openForm", mode, widgetDirectTo, projectKey)
+    }
+
+    // Draws every window currently attached in this process (Activity + any Dialogs/PopupWindows
+    // on top of it) into a single bitmap, so screenshots include native modals. A plain
+    // `view.draw(canvas)` only walks the hierarchy rooted at that view — a Dialog is a separate
+    // Window, not a child view of the Activity, so it would otherwise be missing from the capture.
+    private fun captureFullScreenBitmap(fallbackRoot: View): Bitmap? {
+        val width = fallbackRoot.width
+        val height = fallbackRoot.height
+        if (width <= 0 || height <= 0) return null
+
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val attachedViews = getAttachedDecorViews()
+
+        if (attachedViews.isEmpty()) {
+            fallbackRoot.draw(canvas)
+            return bitmap
+        }
+
+        val location = IntArray(2)
+        for (view in attachedViews) {
+            if (!view.isShown || view.width <= 0 || view.height <= 0) continue
+            view.getLocationOnScreen(location)
+            canvas.save()
+            canvas.translate(location[0].toFloat(), location[1].toFloat())
+            try {
+                view.draw(canvas)
+            } catch (e: Exception) {
+                Log.w("Userback", "Failed to draw window into screenshot: ${e.message}")
+            }
+            canvas.restore()
+        }
+        return bitmap
+    }
+
+    // Returns every DecorView currently attached to WindowManagerGlobal in this process, in
+    // attach order — the Activity's window first, with any later Dialogs/PopupWindows after it.
+    // Uses reflection since there is no public API to enumerate all windows in a process.
+    private fun getAttachedDecorViews(): List<View> {
+        return try {
+            val wmgClass = Class.forName("android.view.WindowManagerGlobal")
+            val instance = wmgClass.getMethod("getInstance").invoke(null)
+            val viewsField = wmgClass.getDeclaredField("mViews")
+            viewsField.isAccessible = true
+            @Suppress("UNCHECKED_CAST")
+            val views = viewsField.get(instance) as? ArrayList<View>
+            views?.toList() ?: emptyList()
+        } catch (e: Exception) {
+            Log.w("Userback", "Failed to enumerate attached windows for screenshot: ${e.message}")
+            emptyList()
+        }
     }
 
     fun openPortal() {
@@ -507,11 +561,9 @@ object Userback {
         webView.post {
             webView.visibility = View.INVISIBLE
             Handler(Looper.getMainLooper()).postDelayed({
-                val window = webView.rootView
-                if (window.width > 0 && window.height > 0) {
-                    val bitmap = Bitmap.createBitmap(window.width, window.height, Bitmap.Config.ARGB_8888)
-                    window.draw(Canvas(bitmap))
-                    webView.visibility = View.VISIBLE
+                val bitmap = captureFullScreenBitmap(webView.rootView)
+                webView.visibility = View.VISIBLE
+                if (bitmap != null) {
                     val outputStream = ByteArrayOutputStream()
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 70, outputStream)
                     val base64Image = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
@@ -531,8 +583,6 @@ object Userback {
                         })();
                     """.trimIndent()
                     webView.evaluateJavascript(js, null)
-                } else {
-                    webView.visibility = View.VISIBLE
                 }
             }, 50)
         }
