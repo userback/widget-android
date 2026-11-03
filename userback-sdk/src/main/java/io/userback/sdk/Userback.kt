@@ -17,6 +17,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.*
 import android.widget.FrameLayout
+import androidx.core.content.pm.PackageInfoCompat
 import androidx.core.net.toUri
 import org.json.JSONObject
 import androidx.activity.ComponentActivity
@@ -36,7 +37,7 @@ object Userback {
     private var requestURL: String? = null
     private var trackURL: String? = null
     private var scriptURL: String? = null
-    const val SDK_VERSION = "2.0.1"
+    const val SDK_VERSION = "2.0.2"
     private const val DEFAULT_JS = "https://static.userback.io/widget/v1.js"
 
     private var isRecording: Boolean = false
@@ -948,6 +949,24 @@ object Userback {
 
     fun createWebView(context: Context) = makeWebView(context)
 
+    /**
+     * Returns the host app's version as "versionName (versionCode)".
+     *
+     * Uses [PackageInfoCompat.getLongVersionCode] rather than
+     * PackageInfo.getLongVersionCode(), which only exists on API 28+ and
+     * throws NoSuchMethodError on API 21-27. Any failure falls back to
+     * "unknown" so device metadata can never crash the host app.
+     */
+    private fun resolveAppVersion(ctx: Context): String = try {
+        val packageInfo = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
+        val appVersion = packageInfo.versionName ?: "unknown"
+        val versionCode = PackageInfoCompat.getLongVersionCode(packageInfo)
+        "$appVersion ($versionCode)"
+    } catch (t: Throwable) {
+        Log.w("Userback", "Unable to resolve app version", t)
+        "unknown"
+    }
+
     private fun buildInjectedJS(): String {
         fun jsonString(value: Any?): String = when (value) {
             null -> "null"
@@ -957,11 +976,7 @@ object Userback {
         }
 
         val ctx = appContext ?: return ""
-        val pm = ctx.packageManager
-        val packageInfo = try { pm.getPackageInfo(ctx.packageName, 0) } catch (e: Exception) { null }
-        val appVersion = packageInfo?.versionName ?: "unknown"
-        val versionCode = packageInfo?.longVersionCode?.toString() ?: ""
-        val fullAppVersion = if (versionCode.isNotEmpty()) "$appVersion ($versionCode)" else appVersion
+        val fullAppVersion = resolveAppVersion(ctx)
 
         val dm = ctx.resources.displayMetrics
         val screenWidthPx = dm.widthPixels
