@@ -34,6 +34,14 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+    lint {
+        // Fail the build if code calls APIs newer than minSdk (e.g. API 28
+        // getLongVersionCode() with minSdk 21) without a version check.
+        abortOnError = true
+        error += "NewApi"
+        error += "InlinedApi"
+        checkReleaseBuilds = true
+    }
 }
 
 afterEvaluate {
@@ -43,7 +51,7 @@ afterEvaluate {
                 from(components["release"])
                 groupId = "com.github.userback"
                 artifactId = "widget-android"
-                version = "2.0.1"
+                version = "2.0.2"
             }
         }
     }
